@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Env & tooling
+.venv/
+env/
+.terraform/
+.pytest_cache/
+.mypy_cache/
+
+# OS noise
+.DS_Store
+
+# Local config/secrets
+.env
+.env.*
+*.local.json
