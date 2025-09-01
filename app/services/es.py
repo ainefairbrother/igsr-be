@@ -2,14 +2,21 @@
 from elasticsearch import Elasticsearch
 from app.core.config import settings
 
-def make_es() -> Elasticsearch:
-    kwargs = {}
+
+def _build_client() -> Elasticsearch:
+    kwargs = {
+        "retry_on_timeout": True,  # retry if a request times out
+        "max_retries": 3,          # small number to avoid long stalls
+        "request_timeout": 10,     # seconds
+    }
+
+    # API key takes precedence if provided, else fall back to basic auth
     if settings.ES_API_KEY:
         kwargs["api_key"] = settings.ES_API_KEY
     elif settings.ES_USERNAME and settings.ES_PASSWORD:
         kwargs["basic_auth"] = (settings.ES_USERNAME, settings.ES_PASSWORD)
 
-    # ES python client v8 works fine against recent clusters
-    return Elasticsearch(settings.ES_HOST, **kwargs)
+    return Elasticsearch(hosts=[settings.ES_HOST], **kwargs)
 
-es = make_es()
+
+es: Elasticsearch = _build_client()

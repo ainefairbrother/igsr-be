@@ -6,6 +6,7 @@ from fastapi.requests import Request
 from app.core.config import settings
 from app.api.routers import health
 from app.api.routers import samples
+from app.api.routers import data_collections
 
 app = FastAPI(title="IGSR API")
 
@@ -18,10 +19,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# IMPORTANT: do NOT add a global '/api' prefix here;
-# Nginx already proxies /api/* to our root.
+# IMPORTANT: no "/api" prefix here; nginx already strips "/api/" on proxy_pass
 app.include_router(health.router)
 app.include_router(samples.router)
+app.include_router(data_collections.router)
 
 @app.get("/")
 def root():
