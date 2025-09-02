@@ -4,3 +4,4 @@ pydantic-settings==2.*
 elasticsearch==8.*
 orjson==3.*
 python-dotenv==1.*
+python-multipart==0.0.*
