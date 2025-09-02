@@ -1,39 +1,37 @@
 # app/api/routers/data_collections.py
 #
-# - Exposes the endpoints the Angular FE calls for *data collections*.
-# - The FE hits:      POST /api/beta/data-collection/_search
-# - Nginx strips /api and proxies to our app, so we register:  /beta/data-collection/_search
-# - We forward the FE's request body to Elasticsearch, then "normalize" the ES
-#   response so it exactly matches what the legacy FE expects (notably: numeric
-#   `hits.total` and always-present `max_score`).
-# - The FE sometimes sends `size: -1` to mean "return all". ES rejects negative
-#   sizes, so we translate -1 to a large positive number (1000) that safely
-#   covers our current DC count.
+# Description:
+# - Exposes the endpoints the FE calls for "data collections"
+# - The FE calls POST /api/beta/data-collection/_search
+# - Nginx strips /api to make:/beta/data-collection/_search
+# - FE's request body is forwarded to Elasticsearch, then the ES response is
+#   normalised so that it exactly matches what the legacy FE expects (notably: numeric
+#   `hits.total` and always-present `max_score`)
+# - The FE sometimes sends `size: -1` to mean "return all", but ES rejects negative
+#   sizes, so -1 is translated to a large positive number (1000) that safely
+#   covers the current DC count (as of 2025, we have 18 data collections).
 
-from fastapi import APIRouter, HTTPException, Request  # Request is imported for parity with other routers; not used here
+from fastapi import APIRouter, HTTPException, Request
 from typing import Any, Dict, Optional
-
 from app.services.es import es
 from app.core.config import settings
 
-# All routes in this module will be mounted under this prefix.
 # Nginx is configured so that FE calls `/api/beta/data-collection/_search`,
-# and that becomes `/beta/data-collection/_search` here.
+# and that becomes `/beta/data-collection/_search` here
 router = APIRouter(prefix="/beta/data-collection", tags=["data-collections"])
 
-# Which ES index to search for this resource type
-# (configurable via .env; default is "data_collections").
+# Which ES index to search (configurable via .env)
 INDEX = settings.INDEX_DATA_COLLECTIONS  # "data_collections"
 
 
-def _normalize_es9(resp: Dict[str, Any]) -> Dict[str, Any]:
+def _normalise_es_response(resp: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Make the ES 8/9 response look like what our Angular FE is coded against.
+    Normalise the ES response so that it is as expected by the FE.
 
     Key adjustments:
-    - ES >= 7 returns hits.total as an object: {"value": N, "relation": "eq|gte"}.
-      The FE expects a plain number, so we coerce that to an int.
-    - Some queries return max_score = null; FE code can assume it's a number.
+    - ES returns hits.total as an object: {"value": N, "relation": "eq|gte"},
+      but the FE expects a plain int, so coerce to plain int.
+    - Some queries to ES return max_score = null; FE code can assume it's a number.
       We set it to 0.0 if ES returned null/None.
     - Always return "aggregations" field (empty object if none), so FE templates
       don't need to null-check before accessing it.
@@ -42,11 +40,10 @@ def _normalize_es9(resp: Dict[str, Any]) -> Dict[str, Any]:
     took = resp.get("took", 0)
     timed_out = resp.get("timed_out", False)
 
-    # Normalize the "hits" block
+    # Normalise the "hits" block
     hits = resp.get("hits", {}) or {}
     total = hits.get("total", 0)
     if isinstance(total, dict):
-        # ES 7+/8+/9+ style: {"value": 123, "relation": "..."}
         total = total.get("value", 0)
     hits["total"] = total
 
@@ -54,56 +51,52 @@ def _normalize_es9(resp: Dict[str, Any]) -> Dict[str, Any]:
     if hits.get("max_score") is None:
         hits["max_score"] = 0.0
 
-    # Always include "aggregations" (empty object is fine)
+    # Always include "aggregations" even if empty
     aggs = resp.get("aggregations", {}) or {}
 
-    # Return the minimal shape the FE expects
+    # Return the shape that the FE expects
     return {"took": took, "timed_out": timed_out, "hits": hits, "aggregations": aggs}
-
 
 @router.post("/_search")
 def search_data_collections(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     POST /beta/data-collection/_search
 
-    Pass-through search to Elasticsearch with a couple of compatibility tweaks:
-
-    1) size:-1 → 1000
-       The legacy FE uses size:-1 to mean "give me everything".
-       ES rejects negative sizes, so we map any negative size to a large,
-       safe default (1000). Adjust this if the DC count grows beyond that.
-
-    2) Default sort
-       If no sort is provided, we sort by 'displayOrder' ascending, which matches
+    FE call to Elasticsearch for data collections, with some small
+    adjustments to the request and response to match FE expectations:
+    - The FE uses size:-1, meaning "return all".
+       ES rejects negative sizes, so any negative size is mapped to a large,
+       safe default (1000).
+    - If no sort is provided, we sort by 'displayOrder' ascending, which matches
        how the FE typically presents collections.
 
-    NOTE: We keep the request body as-is otherwise (queries, filters, etc.) and
-          we return a normalized ES response that preserves the fields the FE uses.
+    Other than these things, the request body is kept as-is and a normalised ES response 
+    is returned, preserving the fields the FE uses.
     """
-    # If the FE didn't send a body, default to a match_all query.
+    # If the FE didn't send a body, default to a match_all query
     es_body: Dict[str, Any] = body or {"query": {"match_all": {}}}
 
-    # Handle "all docs" convention from the FE (size:-1)
+    # Handle "return all" from the FE (size:-1)
     size = es_body.get("size")
     if isinstance(size, int) and size < 0:
-        es_body["size"] = 1000  # big enough for current DC count; increase if needed
+        es_body["size"] = 1000  # increase if needed
 
-    # Provide a stable default sort if none is specified by the FE.
+    # Provide a default sort if none is specified by the FE
     if "sort" not in es_body:
         es_body["sort"] = [{"displayOrder": {"order": "asc"}}]
 
-    # Call ES and map any errors to a 502 (bad gateway) for clarity in the FE.
+    # Call ES and map any errors to a 502 (bad gateway, i.e. retrieval from ES didn't work)
     try:
-        # ignore_unavailable=True → if the index doesn't exist yet, ES won't hard-fail
+        # ignore_unavailable=True - if the index doesn't exist yet, empty page, but no error
         resp = es.search(index=INDEX, body=es_body, ignore_unavailable=True)
     except Exception as e:
-        # Bubble a concise error up to the FE; logs will carry the stack trace.
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
 
     # Return the FE-shaped response
-    return _normalize_es9(resp)
+    return _normalise_es_response(resp)
 
-
+# this is for dev
+# to test, call with curl -s -XGET http://localhost:8080/api/beta/data-collection/_search | jq
 @router.get("/_search")
 def search_data_collections_get() -> Dict[str, Any]:
     """
