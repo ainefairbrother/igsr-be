@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     INDEX_SAMPLE: str = "sample"
     INDEX_DATA_COLLECTIONS: str = "data_collections" # FE path is /beta/data-collection/_search but the ES index is "data_collections"
+    INDEX_ANALYSIS_GROUP: str = "analysis_group"
     
     # When FE sends size:-1 ("all"), limit to this many hits in one request
     # This is because Elasticsearch’s size window is capped by the index setting max_result_window (which defaults to 10,000)

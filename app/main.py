@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.api.routers import health
 from app.api.routers import samples
 from app.api.routers import data_collections
+from app.api.routers import analysis_group
 
 app = FastAPI(title="IGSR API")
 
@@ -23,6 +24,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(samples.router)
 app.include_router(data_collections.router)
+app.include_router(analysis_group.router)
 
 @app.get("/")
 def root():
