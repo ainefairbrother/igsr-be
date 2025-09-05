@@ -1,15 +1,21 @@
 # app/api/routers/data_collections.py
-#
-# Description:
-# - Exposes the endpoints the FE calls for "data collections"
-# - The FE calls POST /api/beta/data-collection/_search
-# - Nginx strips /api to make:/beta/data-collection/_search
-# - FE's request body is forwarded to Elasticsearch, then the ES response is
-#   normalised so that it exactly matches what the legacy FE expects (notably: numeric
-#   `hits.total` and always-present `max_score`)
-# - The FE sometimes sends `size: -1` to mean "return all", but ES rejects negative
-#   sizes, so -1 is translated to a large positive number (1000) that safely
-#   covers the current DC count (as of 2025, we have 18 data collections).
+"""
+Data Collections router
+=======================
+FE path: /api/beta/data-collection/*  →  here: /beta/data-collection/*
+
+Description
+-----------
+Pass-through to Elasticsearch for the Data Collections list with a couple of
+compatibility tweaks so the legacy FE continues to work regardless of index shape
+
+- the FE sometimes sends `size:-1` to mean *return all*  
+  we map any negative `size` to a safe cap: `settings.ES_ALL_SIZE_CAP`
+- if no sort is provided we default to `displayOrder` ascending  
+  this matches how the FE presents collections
+- the ES response is normalised via `normalise_es_response` so the FE gets the
+  legacy shape it expects, including numeric `hits.total` and a present `max_score`
+"""
 
 from fastapi import APIRouter, HTTPException, Request
 from typing import Any, Dict, Optional
@@ -17,12 +23,12 @@ from app.services.es import es
 from app.core.config import settings
 from app.lib.es_utils import normalise_es_response
 
-# Nginx is configured so that FE calls `/api/beta/data-collection/_search`,
-# and that becomes `/beta/data-collection/_search` here
+# FE calls /api/beta/data-collection/_search and nginx rewrites it to /beta/data-collection/_search here
 router = APIRouter(prefix="/beta/data-collection", tags=["data-collections"])
 
-# Which ES index to search (configurable via .env)
-INDEX = settings.INDEX_DATA_COLLECTIONS  # "data_collections"
+# which ES index or alias to query
+INDEX = settings.INDEX_DATA_COLLECTIONS
+
 
 # ------------------------------ Endpoints ------------------------------------
 
@@ -31,47 +37,44 @@ def search_data_collections(body: Optional[Dict[str, Any]] = None) -> Dict[str, 
     """
     POST /beta/data-collection/_search
 
-    FE call to Elasticsearch for data collections, with some small
-    adjustments to the request and response to match FE expectations:
-    - The FE uses size:-1, meaning "return all". ES rejects negative sizes, 
-      so any negative size is mapped to a large, safe default (10,000, set in core/config.py)
-    - If no sort is provided, sorts by 'displayOrder' ascending, which matches
-      how the FE typically presents collections
+    Forward the FE body to Elasticsearch with small adjustments so requests are valid
+    and results are predictable for the UI
+      - negative `size` (FE uses -1 for *all*) is mapped to `settings.ES_ALL_SIZE_CAP`
+      - if no `sort` is present we sort by `displayOrder` ascending
 
-    Other than these things, the request body is kept as-is and a normalised ES response 
-    is returned, preserving the fields the FE uses
+    The ES response is normalised to the FE’s legacy shape
     """
-    # If the FE didn't send a body, default to a match_all query
+    # default to match_all if the FE did not send a body
     es_body: Dict[str, Any] = body or {"query": {"match_all": {}}}
 
-    # Handle "return all" from the FE (size:-1)
+    # handle *return all* requested by the FE with size:-1
     size = es_body.get("size")
     if isinstance(size, int) and size < 0:
         es_body["size"] = settings.ES_ALL_SIZE_CAP
 
-    # Provide a default sort if none is specified by the FE
+    # provide a stable default sort if the FE omitted one
     if "sort" not in es_body:
         es_body["sort"] = [{"displayOrder": {"order": "asc"}}]
 
-    # Call ES and map any errors to a 502 (bad gateway, i.e. retrieval from ES didn't work)
+    # call ES and translate failures to 502 for the FE
     try:
-        # ignore_unavailable=True - if the index doesn't exist yet, empty page, but no error
+        # ignore_unavailable=True so a missing index returns an empty page rather than an error
         resp = es.search(index=INDEX, body=es_body, ignore_unavailable=True)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
 
-    # Return the FE-shaped response
+    # return response in the legacy FE shape
     return normalise_es_response(resp)
 
-# this is for dev
-# to test, call with curl -s -XGET http://localhost:8080/api/beta/data-collection/_search | jq
+
+# for dev
+# curl -s -XGET http://localhost:8080/api/beta/data-collection/_search | jq
 @router.get("/_search")
 def search_data_collections_get() -> Dict[str, Any]:
     """
     GET /beta/data-collection/_search
 
-    Convenience endpoint used when a browser or a simple link hits this path via GET.
-    Mirrors a basic POST with match_all and a generous size, so you can test in a browser:
-      http://localhost:8080/api/beta/data-collection/_search
+    Convenience endpoint that mirrors a basic POST with match_all and a generous size
+    useful for spot checks in a browser
     """
     return search_data_collections({"query": {"match_all": {}}, "size": 1000})

@@ -6,7 +6,7 @@ FE path: /api/beta/analysis-group/*  →  here: /beta/analysis-group/*
 
 Description
 -----------
-Communicates with Elasticsearch with a few adjustments so the FE keeps 
+Queries Elasticsearch with a few adjustments so the FE keeps 
 working regardless of whether the analysis-group index uses the
 'old' fields (`title`, `shortTitle`) or the 'new' ones (`description`, `code`):
 
@@ -91,7 +91,7 @@ def _apply_fe_label(hits: List[Dict[str, Any]]) -> None:
         h["_source"] = src
 
 
-# -------------------------------- Routes ------------------------------------ #
+# -------------------------------- Endpoints ------------------------------------ #
 
 @router.post("/_search")
 def search_analysis_group(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
