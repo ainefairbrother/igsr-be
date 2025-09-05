@@ -6,25 +6,20 @@ FE path: /api/beta/sample/*  →  here: /beta/sample/*
 
 Description
 -----------
-Queries Elasticsearch for the Samples table and export with a few
-compatibility functions so the current FE keeps working against the current index
+Queries Elasticsearch for the Samples table and TSV export with a small set of
+compatibility adjustments so the current FE keeps working against the current index
 
 - `size:-1` is capped to `settings.ES_ALL_SIZE_CAP`
 - if no sort is provided we default to `name.keyword` ascending
 - `track_total_hits=True` so totals are exact
-- FE sometimes filters on `dataCollections.title` or `dataCollections.title.std`
-  inside `term/terms` queries — we rewrite those field names to
+- the FE sometimes filters on `dataCollections.title` or `dataCollections.title.std`
+  inside `term/terms` queries, so rewrite those field names to
   `dataCollections.title.keyword` for exact matches
-- if the FE requests `fields: ["dataCollections._analysisGroups"]` we ensure
-  doc values are requested so ES returns `hits.hits[*].fields[...]`
-- if ES still does not return that field we synthesise it from
-  `_source.dataCollections.sequence/alignment/variants` and attach it to
-  `hits.hits[*].fields["dataCollections._analysisGroups"]`
-- a TSV export endpoint accepts a list of `_source` paths and streams a
-  tab-separated file, joining arrays with commas
+- TSV export accepts a list of `_source` paths and streams a tab-separated file,
+  joining arrays with commas
 
-All responses are normalised with `normalise_es_response` to match the legacy
-FE shape
+Nginx strips the `/api` prefix so FastAPI sees requests under `/beta/sample/*`
+All responses are normalised via `normalise_es_response` to match the legacy FE shape
 """
 
 from fastapi import APIRouter, HTTPException, Response, Form, Body, Path, Request
@@ -53,7 +48,7 @@ def _get_nested(source: Dict[str, Any], path: str) -> Union[str, int, float, boo
     current: Any = source
     for p in parts:
         if isinstance(current, list):
-            collected: List[Any] = []
+            collected: List[str] = []
             for item in current:
                 if isinstance(item, dict):
                     v = item.get(p)
@@ -147,68 +142,6 @@ def _rewrite_dc_title_to_keyword(node: Any) -> Any:
     return node
 
 
-# ---- Ensure ES returns requested fields + minimal _source for fallback -------
-
-def _request_includes_ag_fields(es_body: Dict[str, Any]) -> bool:
-    requested = es_body.get("fields") or []
-    return isinstance(requested, list) and any(
-        f in ("dataCollections._analysisGroups", "dataCollections._analysisGroups.keyword")
-        for f in requested
-    )
-
-
-def _ensure_docvalues_for_requested_fields(es_body: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    If the FE asks for dataCollections._analysisGroups in 'fields', ensure doc values
-    are requested so ES returns hits.hits[*].fields[...]
-    """
-    if not _request_includes_ag_fields(es_body):
-        return es_body
-    dv = set(es_body.get("docvalue_fields") or [])
-    dv.add("dataCollections._analysisGroups")
-    es_body["docvalue_fields"] = list(dv)
-    return es_body
-
-
-def _ensure_min_source_for_ag_fallback(es_body: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    If FE asks for dataCollections._analysisGroups and _source is False
-    include just enough _source so we can synthesise the values as a fallback
-    """
-    if not _request_includes_ag_fields(es_body):
-        return es_body
-
-    needed = ["dataCollections.sequence", "dataCollections.alignment", "dataCollections.variants"]
-    src = es_body.get("_source")
-    if src is False:
-        es_body["_source"] = {"includes": needed}
-    elif isinstance(src, dict):
-        inc = set(src.get("includes") or [])
-        inc.update(needed)
-        es_body["_source"]["includes"] = list(inc)
-    # else: _source True or omitted → OK
-    return es_body
-
-
-def _synth_ag_from_source(src: Dict[str, Any]) -> List[str]:
-    """Build analysis-group titles from _source dataCollections.* arrays for fallback"""
-    ags: List[str] = []
-    for dc in src.get("dataCollections") or []:
-        if not isinstance(dc, dict):
-            continue
-        for k in ("sequence", "alignment", "variants"):
-            vals = dc.get(k) or []
-            if isinstance(vals, list):
-                ags.extend([v for v in vals if isinstance(v, str)])
-    # de-duplicate while preserving order
-    seen, out = set(), []
-    for v in ags:
-        if v not in seen:
-            seen.add(v)
-            out.append(v)
-    return out
-
-
 # ------------------------------ Endpoints ------------------------------------
 
 @router.post("/_search")
@@ -221,9 +154,6 @@ def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any
       - track_total_hits=True for exact totals
       - default sort by name.keyword asc if none provided
       - rewrite dataCollections.title(.std) → .keyword in term/terms
-      - if 'fields' asks for dataCollections._analysisGroups, request doc values
-        and ensure minimal _source for synthesis fallback
-      - after search: if that field is requested, synthesise when missing
     """
     es_body: Dict[str, Any] = body or {"query": {"match_all": {}}}
 
@@ -240,33 +170,11 @@ def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any
     # FE 'data collection' filter: title.std → title.keyword
     es_body = _rewrite_dc_title_to_keyword(es_body)
 
-    # ensure doc values and minimal _source for fallback if needed
-    es_body = _ensure_docvalues_for_requested_fields(es_body)
-    es_body = _ensure_min_source_for_ag_fallback(es_body)
-
     # query ES
     try:
         resp = es.search(index=INDEX, body=es_body, ignore_unavailable=True)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
-
-    # if FE requested analysis-group fields and ES did not include them
-    # synthesise from _source and attach to hits[*].fields["dataCollections._analysisGroups"]
-    if _request_includes_ag_fields(es_body):
-        hits_list = ((resp.get("hits") or {}).get("hits") or [])
-        for h in hits_list:
-            fields = h.get("fields")
-            if not isinstance(fields, dict):
-                fields = {}
-                h["fields"] = fields
-            if "dataCollections._analysisGroups" not in fields:
-                # accept keyword alias if present
-                if "dataCollections._analysisGroups.keyword" in fields:
-                    fields["dataCollections._analysisGroups"] = fields["dataCollections._analysisGroups.keyword"]
-                else:
-                    vals = _synth_ag_from_source(h.get("_source") or {})
-                    if vals:
-                        fields["dataCollections._analysisGroups"] = vals
 
     return normalise_es_response(resp)
 
