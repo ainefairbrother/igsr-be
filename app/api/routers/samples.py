@@ -10,7 +10,6 @@ Queries Elasticsearch for the Samples table and TSV export with a small set of
 compatibility adjustments so the current FE keeps working against the current index
 
 - `size:-1` is capped to `settings.ES_ALL_SIZE_CAP`
-- if no sort is provided we default to `name.keyword` ascending
 - `track_total_hits=True` so totals are exact
 - the FE sometimes filters on `dataCollections.title` or `dataCollections.title.std`
   inside `term/terms` queries, so rewrite those field names to
@@ -162,10 +161,8 @@ def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any
     if isinstance(size, int) and size < 0:
         es_body["size"] = settings.ES_ALL_SIZE_CAP
 
-    # exact totals and stable default sort
+    # exact totals
     es_body.setdefault("track_total_hits", True)
-    if "sort" not in es_body:
-        es_body["sort"] = [{"name.keyword": {"order": "asc"}}]
 
     # FE 'data collection' filter: title.std → title.keyword
     es_body = _rewrite_dc_title_to_keyword(es_body)
@@ -225,15 +222,18 @@ async def export_samples_tsv(
     """
     POST /beta/sample/_search/{filename}.tsv
 
-    Payload:
-      - fields: list of dotted _source paths plus special "_id" / "_index"
-      - column_names: optional header labels, same length as fields
-      - query: ES query, defaults to match_all
-      - size: integer, capped server-side
+    Payload
+    -------
+    - fields: list of dotted _source paths plus special "_id" / "_index"
+    - column_names: optional header labels, same length as fields
+    - query: ES query, defaults to match_all
+    - size: integer, capped server-side
 
-    Response:
-      - content type text/tab-separated-values
-      - arrays joined by commas, tabs and newlines stripped
+    Behaviour
+    ---------
+    - rewrites any dataCollections.title(.std) terms to dataCollections.title.keyword
+      so data-collection filters work on exact values
+    - returns a TSV where arrays are joined by commas and tabs/newlines are stripped
     """
     # parse payload from form field, raw JSON body, or manual form parse
     payload: Dict[str, Any] = {}
@@ -263,6 +263,9 @@ async def export_samples_tsv(
     fields: List[str] = list(payload.get("fields") or [])
     column_names: List[str] = list(payload.get("column_names") or fields)
     query: Dict[str, Any] = payload.get("query") or {"match_all": {}}
+
+    # make DC filters exact-match by using the keyword subfield
+    query = _rewrite_dc_title_to_keyword(query)
 
     # cap export size
     size = payload.get("size")
