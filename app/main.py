@@ -8,6 +8,7 @@ from app.api.routers import health
 from app.api.routers import samples
 from app.api.routers import data_collections
 from app.api.routers import analysis_group
+from app.api.routers import population
 
 app = FastAPI(title="IGSR API")
 
@@ -25,6 +26,7 @@ app.include_router(health.router)
 app.include_router(samples.router)
 app.include_router(data_collections.router)
 app.include_router(analysis_group.router)
+app.include_router(population.router)
 
 @app.get("/")
 def root():

@@ -116,23 +116,34 @@ def _iter_hits_as_rows(hits: Iterable[Dict[str, Any]], columns: List[str], sep: 
         yield "\t".join(row)
 
 
-# ---- FE 'Filter by data collection' (title.std → title.keyword) --------------
-
 def _rewrite_dc_title_to_keyword(node: Any) -> Any:
     """
-    Map FE references to dataCollections.title(.std) → dataCollections.title.keyword
-    inside term/terms bodies, other nodes pass through untouched
+    Rewrite FE 'term/terms' filters to keyword subfields where needed so exact
+    matches work on analysed text fields.
+
+    - dataCollections.title(.std) → dataCollections.title.keyword
+    - populations.* fields used by the FE → their `.keyword` subfields
     """
+    POP_KW = {
+        "populations.elasticId",
+        "populations.code",
+        "populations.name",
+        "populations.superpopulationCode",
+        "populations.superpopulationName",
+    }
+
     def _fix_field(field: str) -> str:
         if field in ("dataCollections.title", "dataCollections.title.std"):
             return "dataCollections.title.keyword"
+        if field in POP_KW:
+            return f"{field}.keyword"
         return field
 
     if isinstance(node, dict):
         out: Dict[str, Any] = {}
         for k, v in node.items():
             if k in ("term", "terms") and isinstance(v, dict):
-                out[k] = { _fix_field(f): _rewrite_dc_title_to_keyword(fv) for f, fv in v.items() }
+                out[k] = { _fix_field(f): _rewrite_dc_title_to_keyword(vv) for f, vv in v.items() }
             else:
                 out[k] = _rewrite_dc_title_to_keyword(v)
         return out
