@@ -1,16 +1,17 @@
 # app/lib/dl_utils.py
-from typing import Any, Dict, Iterable, List, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from fastapi import HTTPException, Request, Response
 import json
 
-JsonLike = Union[str, int, float, bool, None, List[Any], Dict[str, Any]]
+from app.services.es import es
 
-def get_nested(source: Dict[str, Any], path: str) -> JsonLike:
+modified_json = Union[str, int, float, bool, None, List[Any], Dict[str, Any]]
+def get_nested(source: Dict[str, Any], path: str) -> modified_json:
     """
-    Resolve a dotted `_source` path (e.g. "a.b.c") for TSV export.
+    Resolve a dotted _source path for TSV export, for example a.b.c.
 
-    If a path segment hits a list of dicts, collect that child field from each
-    item and drop empty values. Returns a scalar/list/dict ready for
-    `to_tsv_cell()`.
+    If a segment points to a list of objects, collect that field from each item
+    and drop empty values.
     """
     parts = path.split(".")
     current: Any = source
@@ -34,12 +35,11 @@ def get_nested(source: Dict[str, Any], path: str) -> JsonLike:
 
 def to_tsv_cell(value: Any, sep: str = ",") -> str:
     """
-    Serialize a value into a single TSV cell.
+    Turn a Python value into a single TSV cell.
 
-    - lists → join items with `sep`, skipping empties
-    - dicts → compact JSON
-    - scalars → str(value)
-    Tabs/newlines are stripped to keep the file well-formed; None → "".
+    Lists are joined by sep with empty items skipped. Dicts are rendered as
+    compact JSON. Scalars are converted to strings. Tabs and newlines are removed.
+    None becomes an empty string.
     """
     if value is None:
         return ""
@@ -66,10 +66,11 @@ def to_tsv_cell(value: Any, sep: str = ",") -> str:
 
 def iter_hits_as_rows(hits: Iterable[Dict[str, Any]], columns: List[str], sep: str = ",") -> Iterable[str]:
     """
-    Yield tab-separated lines for a TSV download from ES hits.
+    Yield tab-separated lines for TSV downloads from Elasticsearch hits.
 
-    `_id` and `_index` come from the hit; other columns are dotted paths
-    resolved from `_source` via `get_nested()`, then formatted with `to_tsv_cell()`.
+    For each hit, build a row for the requested columns. _id and _index come
+    from the hit itself; all other columns are read from _source using
+    get_nested, then formatted with to_tsv_cell.
     """
     for h in hits:
         src = h.get("_source", {}) or {}
@@ -83,3 +84,93 @@ def iter_hits_as_rows(hits: Iterable[Dict[str, Any]], columns: List[str], sep: s
                 val = get_nested(src, col)
             row.append(to_tsv_cell(val, sep=sep))
         yield "\t".join(row)
+        
+
+RewriteFn = Callable[[Any], Any]
+async def export_tsv_response(
+    *,
+    request: Request,
+    json_form: Optional[str],
+    index: str,
+    filename: str,
+    size_cap: int,
+    default_fields: List[str],
+    rewrite: Optional[RewriteFn] = None,
+) -> Response:
+    """
+    Build a TSV download response from an ES index.
+
+    - Accepts payload via JSON body or multipart form field 'json'
+    - Optionally rewrites term/terms filters (e.g. .title -> .title.keyword)
+    - Caps size to protect the cluster
+    - Queries ES and renders hits to a TSV using iter_hits_as_rows
+    """
+    # 1) Parse payload (form 'json' wins over raw body)
+    payload: Dict[str, Any] = {}
+    if json_form is not None:
+        try:
+            payload = json.loads(json_form)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Invalid form 'json': {e}")
+    else:
+        ctype = (request.headers.get("content-type") or "").lower()
+        if "application/json" in ctype:
+            try:
+                payload = await request.json()
+            except Exception as e:
+                raise HTTPException(status_code=422, detail=f"Invalid JSON body: {e}")
+        else:
+            form = await request.form()
+            raw = form.get("json")
+            if not raw:
+                raise HTTPException(status_code=422, detail="Missing JSON body or form field 'json'")
+            try:
+                payload = json.loads(raw)
+            except Exception as e:
+                raise HTTPException(status_code=422, detail=f"Invalid form 'json': {e}")
+
+    # 2) Extract request parts
+    fields: List[str] = list(payload.get("fields") or [])
+    column_names: List[str] = list(payload.get("column_names") or fields)
+    query: Dict[str, Any] = payload.get("query") or {"match_all": {}}
+
+    # 3) Optional field rewrites for exact matching
+    if rewrite:
+        query = rewrite(query)
+
+    # 4) Cap size
+    size = payload.get("size")
+    if not isinstance(size, int) or size < 0 or size > size_cap:
+        size = size_cap
+
+    # 5) Query ES
+    try:
+        resp = es.search(
+            index=index,
+            body={"query": query, "_source": True, "size": size, "track_total_hits": True},
+            ignore_unavailable=True,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}")
+
+    hits = (resp.get("hits") or {}).get("hits") or []
+
+    # 6) Columns and header
+    if not fields:
+        fields = default_fields
+    header = "\t".join(column_names) if column_names and len(column_names) == len(fields) else "\t".join(fields)
+
+    # 7) Build TSV
+    lines = [header] if header else []
+    lines.extend(iter_hits_as_rows(hits, fields))
+    tsv = ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
+
+    # 8) Response
+    return Response(
+        content=tsv,
+        media_type="text/tab-separated-values",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}.tsv"',
+            "Cache-Control": "no-store",
+        },
+    )

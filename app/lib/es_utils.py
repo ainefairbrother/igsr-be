@@ -1,16 +1,14 @@
-from typing import Any, Dict, Mapping
+from typing import Any, Dict
 
 def normalise_es_response(resp: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Normalise the ES response so that it is as expected by the FE.
+    Shape an Elasticsearch response into what the front end expects.
 
-    Key adjustments:
-    - ES returns hits.total as an object: {"value": N, "relation": "eq|gte"},
-      but the FE expects a plain int, so coerce to plain int.
-    - Some queries to ES return max_score = null; FE code can assume it's a number.
-      We set it to 0.0 if ES returned null/None.
-    - Always return "aggregations" field (empty object if none), so FE templates
-      don't need to null-check before accessing it.
+    - Convert hits.total from an object to a plain int.
+    - Ensure hits.max_score is always a number (use 0.0 when missing).
+    - Always include an aggregations object (empty when not present).
+
+    Returns a dict with took, timed_out, hits and aggregations.
     """
     # Copy standard ES fields, defaulting to safe values
     took = resp.get("took", 0)
@@ -36,11 +34,11 @@ def normalise_es_response(resp: Dict[str, Any]) -> Dict[str, Any]:
 
 def rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
     """
-    Walk an ES query body and rewrite only `term`/`terms` field names so exact matches
-    hit `.keyword` (or another target) as per `field_map`
-    
-    - Idempotent: leaves fields already ending in `.keyword` alone
-    - Pure: returns a new structure without mutating the input
+    Walk an Elasticsearch query and rewrite only term or terms fields using field_map,
+    so exact matches hit the right subfield (for example a .keyword subfield).
+
+    Leaves fields already pointing at .keyword and does not
+    mutate the input - returns a new structure.
     """
     def _fix(field: str) -> str:
         if field.endswith(".keyword"):
@@ -62,13 +60,15 @@ def rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
 
 def rewrite_terms_for_samples(node: Any) -> Any:
     """
-    Samples-only wrapper around rewrite_terms_to_keyword
-    The Samples FE sometimes sends `term/terms` filters against analysed text
-    fields; exact matching in ES requires querying the `.keyword` subfields.
-    For samples this covers:
-      - dataCollections.title(.std) → dataCollections.title.keyword
-      - populations.* (elasticId, code, name, superpopulation*) → *.keyword
-      - populations.* exists on the sample index but not on the population index
+    Apply the field rewrites the Samples front end expects for exact filters.
+
+    Ensures filters target exact-match fields on the sample index:
+    - dataCollections.title and dataCollections.title.std -> dataCollections.title.keyword
+    - populations.* fields (elasticId, code, name, superpopulationCode, superpopulationName)
+      -> their .keyword subfields
+
+    These populations.* mappings are specific to the sample index and are not
+    present on the population index.
     """
     field_map = {
         "dataCollections.title": "dataCollections.title.keyword",
@@ -85,10 +85,10 @@ def rewrite_terms_for_samples(node: Any) -> Any:
 
 def rewrite_terms_for_population(node: Any) -> Any:
     """
-    Population-only wrapper around rewrite_terms_to_keyword
-    The Population FE may filter by data-collection title; exact matching
-    requires the `.keyword` subfield:
-      - dataCollections.title(.std) → dataCollections.title.keyword
+    Apply the field rewrites the Population front end expects for exact filters.
+
+    Populations are filtered by data collection title only, so we map:
+    - dataCollections.title and dataCollections.title.std -> dataCollections.title.keyword
     """
     field_map = {
         "dataCollections.title": "dataCollections.title.keyword",

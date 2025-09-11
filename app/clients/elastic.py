@@ -1,5 +1,5 @@
 from elasticsearch import Elasticsearch
-from ..core.config import settings
+from app.core.config import settings
 
 def get_es() -> Elasticsearch:
     # Prefer API key in production (no username/password in logs)
