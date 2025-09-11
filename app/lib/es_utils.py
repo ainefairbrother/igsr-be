@@ -95,3 +95,18 @@ def rewrite_terms_for_population(node: Any) -> Any:
         "dataCollections.title.std": "dataCollections.title.keyword",
     }
     return rewrite_terms_to_keyword(node, field_map)
+
+def rewrite_terms_for_file(node: Any) -> Any:
+    field_map = {
+        # FE sometimes sends these from shared UI
+        "dataCollections.title": "dataCollections.keyword",
+        "dataCollections.title.std": "dataCollections.keyword",
+        # Native file fields
+        "dataCollections": "dataCollections.keyword",
+        "analysisGroup": "analysisGroup.keyword",
+        "dataType": "dataType.keyword",
+        "samples": "samples.keyword",
+        "populations": "populations.keyword",
+        "url": "url.keyword",
+    }
+    return rewrite_terms_to_keyword(node, field_map)
