@@ -32,3 +32,53 @@ def normalise_es_response(resp: Dict[str, Any]) -> Dict[str, Any]:
 
     # Return the shape that the FE expects
     return {"took": took, "timed_out": timed_out, "hits": hits, "aggregations": aggs}
+  
+
+def rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
+    """
+    Walk an ES query body and rewrite only `term`/`terms` field names so exact matches
+    hit `.keyword` (or another target) as per `field_map`
+    
+    - Idempotent: leaves fields already ending in `.keyword` alone
+    - Pure: returns a new structure without mutating the input
+    """
+    def _fix(field: str) -> str:
+        if field.endswith(".keyword"):
+            return field
+        return field_map.get(field, field)
+
+    if isinstance(node, dict):
+        out = {}
+        for k, v in node.items():
+            if k in ("term", "terms") and isinstance(v, dict):
+                out[k] = { _fix(f): rewrite_terms_to_keyword(vv, field_map) for f, vv in v.items() }
+            else:
+                out[k] = rewrite_terms_to_keyword(v, field_map)
+        return out
+    if isinstance(node, list):
+        return [rewrite_terms_to_keyword(x, field_map) for x in node]
+    return node
+
+# rewrite_terms_to_keyword wrappers for samples and population routers
+def rewrite_terms_for_samples(node: Any) -> Any:
+    """Apply the field rewrites the Samples FE expects for exact filters"""
+    field_map = {
+        "dataCollections.title": "dataCollections.title.keyword",
+        "dataCollections.title.std": "dataCollections.title.keyword",
+        # population filters used by the FE
+        "populations.elasticId": "populations.elasticId.keyword",
+        "populations.code": "populations.code.keyword",
+        "populations.name": "populations.name.keyword",
+        "populations.superpopulationCode": "populations.superpopulationCode.keyword",
+        "populations.superpopulationName": "populations.superpopulationName.keyword",
+    }
+    return rewrite_terms_to_keyword(node, field_map)
+
+
+def rewrite_terms_for_population(node: Any) -> Any:
+    """Apply the field rewrites the Population FE expects for exact filters"""
+    field_map = {
+        "dataCollections.title": "dataCollections.title.keyword",
+        "dataCollections.title.std": "dataCollections.title.keyword",
+    }
+    return rewrite_terms_to_keyword(node, field_map)

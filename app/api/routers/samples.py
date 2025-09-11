@@ -28,6 +28,8 @@ import json
 from app.services.es import es
 from app.core.config import settings
 from app.lib.es_utils import normalise_es_response
+from app.lib.es_utils import rewrite_terms_for_samples
+from app.lib.dl_utils import iter_hits_as_rows
 
 router = APIRouter(prefix="/beta/sample", tags=["samples"])
 
@@ -35,121 +37,6 @@ INDEX = settings.INDEX_SAMPLE
 
 
 # ------------------------------- Helpers ------------------------------------ #
-
-def _get_nested(source: Dict[str, Any], path: str) -> Union[str, int, float, bool, None, List[Any], Dict[str, Any]]:
-    """
-    Fetch a dotted path (e.g. 'populations.code') from _source
-
-    - On lists of dicts collect the child values across the list
-    - Drop None/empty values when collecting to avoid trailing separators
-    """
-    parts = path.split(".")
-    current: Any = source
-    for p in parts:
-        if isinstance(current, list):
-            collected: List[str] = []
-            for item in current:
-                if isinstance(item, dict):
-                    v = item.get(p)
-                    if isinstance(v, list):
-                        collected.extend([vv for vv in v if vv not in (None, "", [])])
-                    elif v not in (None, "", []):
-                        collected.append(v)
-            current = collected
-        elif isinstance(current, dict):
-            current = current.get(p)
-        else:
-            return None
-    return current
-
-
-def _to_tsv_cell(value: Any, sep: str = ",") -> str:
-    """
-    Convert nested or array values to a TSV-friendly string
-
-    - list -> joined by `sep` with no extra spaces, dropping empty entries
-    - dict -> compact JSON
-    - scalars -> str
-    - always strip tabs and newlines
-    """
-    if value is None:
-        return ""
-    if isinstance(value, (int, float, bool)):
-        s = str(value)
-    elif isinstance(value, list):
-        flat: List[str] = []
-        for v in value:
-            if v in (None, "", []):
-                continue
-            if isinstance(v, (int, float, bool)):
-                flat.append(str(v))
-            elif isinstance(v, dict):
-                flat.append(json.dumps(v, separators=(",", ":"), ensure_ascii=False))
-            else:
-                flat.append(str(v))
-        s = sep.join(flat)
-    elif isinstance(value, dict):
-        s = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-    else:
-        s = str(value)
-    return s.replace("\t", " ").replace("\r", " ").replace("\n", " ")
-
-
-def _iter_hits_as_rows(hits: Iterable[Dict[str, Any]], columns: List[str], sep: str = ",") -> Iterable[str]:
-    """
-    Yield TSV lines for the requested columns
-
-    - '_id' / '_index' come from the hit itself
-    - all other paths are read from _source
-    """
-    for h in hits:
-        src = h.get("_source", {}) or {}
-        row: List[str] = []
-        for col in columns:
-            if col == "_id":
-                val = h.get("_id")
-            elif col == "_index":
-                val = h.get("_index")
-            else:
-                val = _get_nested(src, col)
-            row.append(_to_tsv_cell(val, sep=sep))
-        yield "\t".join(row)
-
-
-def _rewrite_dc_title_to_keyword(node: Any) -> Any:
-    """
-    Rewrite FE 'term/terms' filters to keyword subfields where needed so exact
-    matches work on analysed text fields.
-
-    - dataCollections.title(.std) → dataCollections.title.keyword
-    - populations.* fields used by the FE → their `.keyword` subfields
-    """
-    POP_KW = {
-        "populations.elasticId",
-        "populations.code",
-        "populations.name",
-        "populations.superpopulationCode",
-        "populations.superpopulationName",
-    }
-
-    def _fix_field(field: str) -> str:
-        if field in ("dataCollections.title", "dataCollections.title.std"):
-            return "dataCollections.title.keyword"
-        if field in POP_KW:
-            return f"{field}.keyword"
-        return field
-
-    if isinstance(node, dict):
-        out: Dict[str, Any] = {}
-        for k, v in node.items():
-            if k in ("term", "terms") and isinstance(v, dict):
-                out[k] = { _fix_field(f): _rewrite_dc_title_to_keyword(vv) for f, vv in v.items() }
-            else:
-                out[k] = _rewrite_dc_title_to_keyword(v)
-        return out
-    if isinstance(node, list):
-        return [_rewrite_dc_title_to_keyword(x) for x in node]
-    return node
 
 
 # ------------------------------ Endpoints ------------------------------------
@@ -176,7 +63,7 @@ def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any
     es_body.setdefault("track_total_hits", True)
 
     # FE 'data collection' filter: title.std → title.keyword
-    es_body = _rewrite_dc_title_to_keyword(es_body)
+    es_body = rewrite_terms_for_samples(es_body)
 
     # query ES
     try:
@@ -276,7 +163,7 @@ async def export_samples_tsv(
     query: Dict[str, Any] = payload.get("query") or {"match_all": {}}
 
     # make DC filters exact-match by using the keyword subfield
-    query = _rewrite_dc_title_to_keyword(query)
+    query = rewrite_terms_for_samples(query)
 
     # cap export size
     size = payload.get("size")
@@ -303,7 +190,7 @@ async def export_samples_tsv(
 
     # build TSV
     lines = [header] if header else []
-    lines.extend(_iter_hits_as_rows(hits, fields))
+    lines.extend(iter_hits_as_rows(hits, fields))
     tsv = ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
 
     return Response(
