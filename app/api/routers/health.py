@@ -1,18 +1,21 @@
-# app/routers/health.py
+# app/api/routers/health.py
 """
 Health router
-=======================
+=============
+FE path: /api/beta/health  ->  here: /beta/health
 """
 
+from typing import Dict
 from fastapi import APIRouter
 from app.services.es import es
 
-router = APIRouter()
+router = APIRouter(prefix="/beta", tags=["health"])
 
-# Health check endpoint
 # curl -s -XGET http://localhost:8080/api/beta/health | jq
 @router.get("/health")
-def health():
-    # ES ping is fastest; fall back to cluster health if needed
-    ok = es.ping()
+def health() -> Dict[str, str]:
+    try:
+        ok = bool(es.ping())
+    except Exception:
+        ok = False
     return {"status": "ok" if ok else "degraded"}
