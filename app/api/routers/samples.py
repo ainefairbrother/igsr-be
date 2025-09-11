@@ -36,9 +36,6 @@ router = APIRouter(prefix="/beta/sample", tags=["samples"])
 INDEX = settings.INDEX_SAMPLE
 
 
-# ------------------------------- Helpers ------------------------------------ #
-
-
 # ------------------------------ Endpoints ------------------------------------
 
 @router.post("/_search")

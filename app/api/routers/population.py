@@ -42,26 +42,26 @@ INDEX = settings.INDEX_POPULATION
 # ------------------------------- Helpers ------------------------------------ #
 
 
-def _ensure_min_source_for_text_fields(es_body: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    If the FE asks for text fields via 'fields' with _source disabled
-    include a minimal _source so the FE can still read them
-    """
-    src = es_body.get("_source")
-    requested = es_body.get("fields") or []
-    if src is False and isinstance(requested, list):
-        needed = {
-            "name",
-            "description",
-            "latitude",
-            "longitude",
-            "superpopulation.name",
-            "superpopulation.display_colour",
-        }
-        # only include if at least one of these appears in 'fields'
-        if any(f in needed for f in requested):
-            es_body["_source"] = {"includes": sorted(list(needed))}
-    return es_body
+# def _ensure_min_source_for_text_fields(es_body: Dict[str, Any]) -> Dict[str, Any]:
+#     """
+#     If the FE asks for text fields via 'fields' with _source disabled
+#     include a minimal _source so the FE can still read them
+#     """
+#     src = es_body.get("_source")
+#     requested = es_body.get("fields") or []
+#     if src is False and isinstance(requested, list):
+#         needed = {
+#             "name",
+#             "description",
+#             "latitude",
+#             "longitude",
+#             "superpopulation.name",
+#             "superpopulation.display_colour",
+#         }
+#         # only include if at least one of these appears in 'fields'
+#         if any(f in needed for f in requested):
+#             es_body["_source"] = {"includes": sorted(list(needed))}
+#     return es_body
 
 # ------------------------------ Endpoints ------------------------------------ #
 
@@ -86,7 +86,7 @@ def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
         ]
 
     es_body = rewrite_terms_for_population(es_body)
-    es_body = _ensure_min_source_for_text_fields(es_body)
+    # es_body = _ensure_min_source_for_text_fields(es_body)
 
     try:
         resp = es.search(index=INDEX, body=es_body, ignore_unavailable=True)
