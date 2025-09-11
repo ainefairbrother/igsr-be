@@ -16,17 +16,23 @@ compatibility adjustments so the current FE keeps working against the current in
 - the FE sometimes filters on `dataCollections.title` or `dataCollections.title.std`
   inside `term/terms` queries, so rewrite those field names to
   `dataCollections.title.keyword` for exact matches
+- when the FE requests only `fields` (with `_source: false`) we include a minimal
+  `_source` so text fields such as `name` and `superpopulation.display_colour`
+  are still available
 
 Nginx strips the `/api` prefix so FastAPI sees requests under `/beta/population/*`
 All responses are normalised via `normalise_es_response` to match the legacy FE shape
 """
 
-from fastapi import APIRouter, HTTPException, Body, Path
-from typing import Any, Dict, Optional
+from fastapi import APIRouter, HTTPException, Body, Path, Request, Form, Response
+from typing import Any, Dict, Iterable, List, Optional, Union
+import json
 
 from app.services.es import es
 from app.core.config import settings
 from app.lib.es_utils import normalise_es_response
+from app.lib.es_utils import rewrite_terms_for_population
+from app.lib.dl_utils import iter_hits_as_rows
 
 router = APIRouter(prefix="/beta/population", tags=["population"])
 
@@ -35,26 +41,27 @@ INDEX = settings.INDEX_POPULATION
 
 # ------------------------------- Helpers ------------------------------------ #
 
-def _rewrite_dc_title_to_keyword(node: Any) -> Any:
-    """
-    Map FE references to dataCollections.title(.std) → dataCollections.title.keyword
-    inside term/terms bodies, other nodes pass through untouched
-    """
-    def _fix(field: str) -> str:
-        return "dataCollections.title.keyword" if field in ("dataCollections.title", "dataCollections.title.std") else field
 
-    if isinstance(node, dict):
-        out: Dict[str, Any] = {}
-        for k, v in node.items():
-            if k in ("term", "terms") and isinstance(v, dict):
-                out[k] = { _fix(f): _rewrite_dc_title_to_keyword(vv) for f, vv in v.items() }
-            else:
-                out[k] = _rewrite_dc_title_to_keyword(v)
-        return out
-    if isinstance(node, list):
-        return [_rewrite_dc_title_to_keyword(x) for x in node]
-    return node
-
+def _ensure_min_source_for_text_fields(es_body: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    If the FE asks for text fields via 'fields' with _source disabled
+    include a minimal _source so the FE can still read them
+    """
+    src = es_body.get("_source")
+    requested = es_body.get("fields") or []
+    if src is False and isinstance(requested, list):
+        needed = {
+            "name",
+            "description",
+            "latitude",
+            "longitude",
+            "superpopulation.name",
+            "superpopulation.display_colour",
+        }
+        # only include if at least one of these appears in 'fields'
+        if any(f in needed for f in requested):
+            es_body["_source"] = {"includes": sorted(list(needed))}
+    return es_body
 
 # ------------------------------ Endpoints ------------------------------------ #
 
@@ -67,23 +74,20 @@ def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
     """
     es_body: Dict[str, Any] = body or {"query": {"match_all": {}}}
 
-    # handle “return all”
     size = es_body.get("size")
     if isinstance(size, int) and size < 0:
         es_body["size"] = settings.ES_ALL_SIZE_CAP
 
-    # exact totals and stable default sort
     es_body.setdefault("track_total_hits", True)
-    # if "sort" not in es_body:
-    #     es_body["sort"] = [
-    #         {"superpopulation.display_order": {"order": "asc"}},
-    #         {"name.keyword": {"order": "asc"}},
-    #     ]
+    if "sort" not in es_body:
+        es_body["sort"] = [
+            {"superpopulation.display_order": {"order": "asc"}},
+            {"name.keyword": {"order": "asc"}},
+        ]
 
-    # FE 'data collection' filter: title.std → title.keyword
-    es_body = _rewrite_dc_title_to_keyword(es_body)
+    es_body = rewrite_terms_for_population(es_body)
+    es_body = _ensure_min_source_for_text_fields(es_body)
 
-    # query ES
     try:
         resp = es.search(index=INDEX, body=es_body, ignore_unavailable=True)
     except Exception as e:
@@ -92,9 +96,9 @@ def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
     return normalise_es_response(resp)
 
 
-# for dev
 @router.get("/_search")
 def search_population_get() -> Dict[str, Any]:
+    """Dev convenience"""
     return search_population({"query": {"match_all": {}}, "size": 1000})
 
 
@@ -105,7 +109,6 @@ def get_population(pid: str = Path(..., description="Population identifier (ES _
 
     Response shape matches FE expectations: { "_source": { ...Population... } }
     """
-    # try by ES _id first
     try:
         doc = es.get(index=INDEX, id=pid, ignore=[404])
         if doc and doc.get("found"):
@@ -113,7 +116,6 @@ def get_population(pid: str = Path(..., description="Population identifier (ES _
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
 
-    # fallback: by elasticId.keyword
     try:
         resp = es.search(
             index=INDEX,
@@ -127,3 +129,86 @@ def get_population(pid: str = Path(..., description="Population identifier (ES _
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
 
     raise HTTPException(status_code=404, detail="Population not found")
+
+
+@router.post("/_search/{filename}.tsv")
+async def export_populations_tsv(
+    filename: str,
+    request: Request,
+    json_form: Optional[str] = Form(None, alias="json"),
+) -> Response:
+    """
+    POST /beta/population/_search/{filename}.tsv
+
+    Payload
+    -------
+    - fields: list of dotted _source paths plus special "_id" / "_index"
+    - column_names: optional header labels, same length as fields
+    - query: ES query, defaults to match_all
+    - size: integer, capped server-side
+
+    Behaviour
+    ---------
+    - rewrites any dataCollections.title(.std) terms to dataCollections.title.keyword
+    - returns a TSV where arrays are joined by commas and tabs/newlines are stripped
+    """
+    payload: Dict[str, Any] = {}
+    if json_form is not None:
+        try:
+            payload = json.loads(json_form)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Invalid form 'json': {e}")
+    else:
+        ctype = (request.headers.get("content-type") or "").lower()
+        if "application/json" in ctype:
+            try:
+                payload = await request.json()
+            except Exception as e:
+                raise HTTPException(status_code=422, detail=f"Invalid JSON body: {e}")
+        else:
+            form = await request.form()
+            raw = form.get("json")
+            if not raw:
+                raise HTTPException(status_code=422, detail="Missing form field 'json'")
+            try:
+                payload = json.loads(raw)
+            except Exception as e:
+                raise HTTPException(status_code=422, detail=f"Invalid form 'json': {e}")
+
+    fields: List[str] = list(payload.get("fields") or [])
+    column_names: List[str] = list(payload.get("column_names") or fields)
+    query: Dict[str, Any] = payload.get("query") or {"match_all": {}}
+
+    query = rewrite_terms_for_population(query)
+
+    size = payload.get("size")
+    if not isinstance(size, int) or size < 0 or size > settings.ES_ALL_SIZE_CAP:
+        size = settings.ES_ALL_SIZE_CAP
+
+    try:
+        resp = es.search(
+            index=INDEX,
+            body={"query": query, "_source": True, "size": size, "track_total_hits": True},
+            ignore_unavailable=True,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}")
+
+    hits = (resp.get("hits") or {}).get("hits") or []
+
+    if not fields:
+        fields = ["elasticId", "name", "superpopulation.name", "latitude", "longitude"]
+
+    header = "\t".join(column_names) if column_names and len(column_names) == len(fields) else "\t".join(fields)
+    lines = [header] if header else []
+    lines.extend(iter_hits_as_rows(hits, fields))
+    tsv = ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
+
+    return Response(
+        content=tsv,
+        media_type="text/tab-separated-values",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}.tsv"',
+            "Cache-Control": "no-store",
+        },
+    )
