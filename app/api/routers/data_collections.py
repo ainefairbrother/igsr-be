@@ -3,18 +3,6 @@
 Data Collections router
 =======================
 FE path: /api/beta/data-collection/*  →  here: /beta/data-collection/*
-
-Description
------------
-Pass-through to Elasticsearch for the Data Collections list with a couple of
-compatibility tweaks so the legacy FE continues to work regardless of index shape
-
-- the FE sometimes sends `size:-1` to mean *return all*  
-  we map any negative `size` to a safe cap: `settings.ES_ALL_SIZE_CAP`
-- if no sort is provided we default to `displayOrder` ascending  
-  this matches how the FE presents collections
-- the ES response is normalised via `normalise_es_response` so the FE gets the
-  legacy shape it expects, including numeric `hits.total` and a present `max_score`
 """
 
 from fastapi import APIRouter, HTTPException, Request
@@ -23,14 +11,12 @@ from app.services.es import es
 from app.core.config import settings
 from app.lib.es_utils import normalise_es_response
 
-# FE calls /api/beta/data-collection/_search and nginx rewrites it to /beta/data-collection/_search here
 router = APIRouter(prefix="/beta/data-collection", tags=["data-collections"])
-
-# which ES index or alias to query
 INDEX = settings.INDEX_DATA_COLLECTIONS
 
 
 # ------------------------------ Endpoints ------------------------------------
+
 
 @router.post("/_search")
 def search_data_collections(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -52,10 +38,6 @@ def search_data_collections(body: Optional[Dict[str, Any]] = None) -> Dict[str, 
     if isinstance(size, int) and size < 0:
         es_body["size"] = settings.ES_ALL_SIZE_CAP
 
-    # provide a stable default sort if the FE omitted one
-    if "sort" not in es_body:
-        es_body["sort"] = [{"displayOrder": {"order": "asc"}}]
-
     # call ES and translate failures to 502 for the FE
     try:
         # ignore_unavailable=True so a missing index returns an empty page rather than an error
@@ -71,10 +53,4 @@ def search_data_collections(body: Optional[Dict[str, Any]] = None) -> Dict[str, 
 # curl -s -XGET http://localhost:8080/api/beta/data-collection/_search | jq
 @router.get("/_search")
 def search_data_collections_get() -> Dict[str, Any]:
-    """
-    GET /beta/data-collection/_search
-
-    Convenience endpoint that mirrors a basic POST with match_all and a generous size
-    useful for spot checks in a browser
-    """
     return search_data_collections({"query": {"match_all": {}}, "size": 1000})

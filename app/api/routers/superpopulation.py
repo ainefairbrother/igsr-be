@@ -11,13 +11,12 @@ from app.services.es import es
 from app.core.config import settings
 from app.lib.es_utils import normalise_es_response
 
-# FE calls /api/beta/superpopulation/_search and nginx rewrites it to /beta/superpopulation/_search here
 router = APIRouter(prefix="/beta/superpopulation", tags=["superpopulation"])
-
-# which ES index or alias to query
 INDEX = settings.INDEX_SUPERPOPULATION
 
+
 # ------------------------------ Endpoints ------------------------------------
+
 
 @router.post("/_search")
 def search_superpopulation(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -39,3 +38,9 @@ def search_superpopulation(body: Optional[Dict[str, Any]] = None) -> Dict[str, A
 
     # return response in the legacy FE shape
     return normalise_es_response(resp)
+
+# for dev
+# curl -s -XGET http://localhost:8080/api/beta/superpopulation/_search | jq
+@router.get("/_search")
+def search_superpopulation_get() -> Dict[str, Any]:
+    return search_superpopulation({"query": {"match_all": {}}, "size": 1000})

@@ -3,22 +3,6 @@
 Samples router
 ==============
 FE path: /api/beta/sample/*  →  here: /beta/sample/*
-
-Description
------------
-Queries Elasticsearch for the Samples table and TSV export with a small set of
-compatibility adjustments so the current FE keeps working against the current index
-
-- `size:-1` is capped to `settings.ES_ALL_SIZE_CAP`
-- `track_total_hits=True` so totals are exact
-- the FE sometimes filters on `dataCollections.title` or `dataCollections.title.std`
-  inside `term/terms` queries, so rewrite those field names to
-  `dataCollections.title.keyword` for exact matches
-- TSV export accepts a list of `_source` paths and streams a tab-separated file,
-  joining arrays with commas
-
-Nginx strips the `/api` prefix so FastAPI sees requests under `/beta/sample/*`
-All responses are normalised via `normalise_es_response` to match the legacy FE shape
 """
 
 from fastapi import APIRouter, HTTPException, Response, Form, Body, Path, Request
@@ -32,11 +16,11 @@ from app.lib.es_utils import rewrite_terms_for_samples
 from app.lib.dl_utils import iter_hits_as_rows
 
 router = APIRouter(prefix="/beta/sample", tags=["samples"])
-
 INDEX = settings.INDEX_SAMPLE
 
 
 # ------------------------------ Endpoints ------------------------------------
+
 
 @router.post("/_search")
 def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
@@ -59,7 +43,7 @@ def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any
     # exact totals
     es_body.setdefault("track_total_hits", True)
 
-    # FE 'data collection' filter: title.std → title.keyword
+    # FE 'data collection' filter: title.std to title.keyword
     es_body = rewrite_terms_for_samples(es_body)
 
     # query ES
@@ -72,6 +56,7 @@ def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any
 
 
 # for dev
+# curl -s -XGET http://localhost:8080/api/beta/sample/_search | jq
 @router.get("/_search")
 def search_samples_get() -> Dict[str, Any]:
     return search_samples({"query": {"match_all": {}}, "size": 25})

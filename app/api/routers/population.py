@@ -3,25 +3,6 @@
 Population router
 =================
 FE path: /api/beta/population/*  →  here: /beta/population/*
-
-Description
------------
-Queries Elasticsearch for the Populations list and detail with a small set of
-compatibility adjustments so the current FE keeps working against the current index
-
-- `size:-1` is capped to `settings.ES_ALL_SIZE_CAP`
-- `track_total_hits=True` so totals are exact
-- if no sort is provided we default to `superpopulation.display_order` ascending,
-  then `name.keyword` ascending
-- the FE sometimes filters on `dataCollections.title` or `dataCollections.title.std`
-  inside `term/terms` queries, so rewrite those field names to
-  `dataCollections.title.keyword` for exact matches
-- when the FE requests only `fields` (with `_source: false`) we include a minimal
-  `_source` so text fields such as `name` and `superpopulation.display_colour`
-  are still available
-
-Nginx strips the `/api` prefix so FastAPI sees requests under `/beta/population/*`
-All responses are normalised via `normalise_es_response` to match the legacy FE shape
 """
 
 from fastapi import APIRouter, HTTPException, Body, Path, Request, Form, Response
@@ -35,35 +16,11 @@ from app.lib.es_utils import rewrite_terms_for_population
 from app.lib.dl_utils import iter_hits_as_rows
 
 router = APIRouter(prefix="/beta/population", tags=["population"])
-
 INDEX = settings.INDEX_POPULATION
 
 
-# ------------------------------- Helpers ------------------------------------ #
-
-
-# def _ensure_min_source_for_text_fields(es_body: Dict[str, Any]) -> Dict[str, Any]:
-#     """
-#     If the FE asks for text fields via 'fields' with _source disabled
-#     include a minimal _source so the FE can still read them
-#     """
-#     src = es_body.get("_source")
-#     requested = es_body.get("fields") or []
-#     if src is False and isinstance(requested, list):
-#         needed = {
-#             "name",
-#             "description",
-#             "latitude",
-#             "longitude",
-#             "superpopulation.name",
-#             "superpopulation.display_colour",
-#         }
-#         # only include if at least one of these appears in 'fields'
-#         if any(f in needed for f in requested):
-#             es_body["_source"] = {"includes": sorted(list(needed))}
-#     return es_body
-
 # ------------------------------ Endpoints ------------------------------------ #
+
 
 @router.post("/_search")
 def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
@@ -79,14 +36,8 @@ def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
         es_body["size"] = settings.ES_ALL_SIZE_CAP
 
     es_body.setdefault("track_total_hits", True)
-    if "sort" not in es_body:
-        es_body["sort"] = [
-            {"superpopulation.display_order": {"order": "asc"}},
-            {"name.keyword": {"order": "asc"}},
-        ]
 
     es_body = rewrite_terms_for_population(es_body)
-    # es_body = _ensure_min_source_for_text_fields(es_body)
 
     try:
         resp = es.search(index=INDEX, body=es_body, ignore_unavailable=True)
@@ -95,10 +46,10 @@ def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
 
     return normalise_es_response(resp)
 
-
+# for dev
+# curl -s -XGET http://localhost:8080/api/beta/population/_search | jq
 @router.get("/_search")
 def search_population_get() -> Dict[str, Any]:
-    """Dev convenience"""
     return search_population({"query": {"match_all": {}}, "size": 1000})
 
 
