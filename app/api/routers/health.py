@@ -14,6 +14,9 @@ router = APIRouter(prefix="/beta", tags=["health"])
 # curl -s -XGET http://localhost:8080/api/beta/health | jq
 @router.get("/health")
 def health() -> Dict[str, str]:
+    """
+    GET /api/beta/health
+    """
     try:
         ok = bool(es.ping())
     except Exception:
