@@ -59,9 +59,17 @@ def rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
         return [rewrite_terms_to_keyword(x, field_map) for x in node]
     return node
 
-# rewrite_terms_to_keyword wrappers for samples and population routers
+
 def rewrite_terms_for_samples(node: Any) -> Any:
-    """Apply the field rewrites the Samples FE expects for exact filters"""
+    """
+    Samples-only wrapper around rewrite_terms_to_keyword
+    The Samples FE sometimes sends `term/terms` filters against analysed text
+    fields; exact matching in ES requires querying the `.keyword` subfields.
+    For samples this covers:
+      - dataCollections.title(.std) → dataCollections.title.keyword
+      - populations.* (elasticId, code, name, superpopulation*) → *.keyword
+      - populations.* exists on the sample index but not on the population index
+    """
     field_map = {
         "dataCollections.title": "dataCollections.title.keyword",
         "dataCollections.title.std": "dataCollections.title.keyword",
@@ -76,7 +84,12 @@ def rewrite_terms_for_samples(node: Any) -> Any:
 
 
 def rewrite_terms_for_population(node: Any) -> Any:
-    """Apply the field rewrites the Population FE expects for exact filters"""
+    """
+    Population-only wrapper around rewrite_terms_to_keyword
+    The Population FE may filter by data-collection title; exact matching
+    requires the `.keyword` subfield:
+      - dataCollections.title(.std) → dataCollections.title.keyword
+    """
     field_map = {
         "dataCollections.title": "dataCollections.title.keyword",
         "dataCollections.title.std": "dataCollections.title.keyword",
