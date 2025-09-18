@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.requests import Request
+
 from app.core.config import settings
 from app.api.routers import health
 from app.api.routers import samples
@@ -10,6 +11,7 @@ from app.api.routers import data_collections
 from app.api.routers import analysis_group
 from app.api.routers import population
 from app.api.routers import superpopulation
+from app.api.routers import sitemap
 from app.api.routers import file
 
 app = FastAPI(title="IGSR API")
@@ -29,6 +31,7 @@ app.include_router(data_collections.router)
 app.include_router(analysis_group.router)
 app.include_router(population.router)
 app.include_router(superpopulation.router)
+app.include_router(sitemap.router)
 app.include_router(file.router)
 
 @app.get("/")

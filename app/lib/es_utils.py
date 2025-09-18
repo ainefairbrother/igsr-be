@@ -1,112 +1,204 @@
-from typing import Any, Dict
+from typing import Any, Callable, Dict, List, Optional
+from functools import reduce
+from collections import deque
+
+# ---------------- Normalise ES response -------------------------
 
 def normalise_es_response(resp: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Shape an Elasticsearch response into what the front end expects.
-
-    - Convert hits.total from an object to a plain int.
-    - Ensure hits.max_score is always a number (use 0.0 when missing).
-    - Always include an aggregations object (empty when not present).
-
-    Returns a dict with took, timed_out, hits and aggregations.
-    """
-    # Copy standard ES fields, defaulting to safe values
     took = resp.get("took", 0)
     timed_out = resp.get("timed_out", False)
 
-    # Normalise the "hits" block
     hits = resp.get("hits", {}) or {}
     total = hits.get("total", 0)
     if isinstance(total, dict):
         total = total.get("value", 0)
     hits["total"] = total
 
-    # Ensure max_score is always a number (FE sometimes treats it as numeric)
     if hits.get("max_score") is None:
         hits["max_score"] = 0.0
 
-    # Always include "aggregations" even if empty
     aggs = resp.get("aggregations", {}) or {}
 
-    # Return the shape that the FE expects
-    return {"took": took, "timed_out": timed_out, "hits": hits, "aggregations": aggs}
-  
+    out: Dict[str, Any] = {
+        "took": took,
+        "timed_out": timed_out,
+        "hits": hits,
+        "aggregations": aggs,
+    }
 
-def rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
+    if "total" in resp and isinstance(resp["total"], int):
+        out["total"] = resp["total"]
+
+    return out
+
+# ---------------- Term/terms to .keyword constants --------------
+
+FIELD_MAP_SAMPLES: Dict[str, str] = {
+    "dataCollections.title": "dataCollections.title.keyword",
+    "dataCollections.title.std": "dataCollections.title.keyword",
+    "populations.elasticId": "populations.elasticId.keyword",
+    "populations.code": "populations.code.keyword",
+    "populations.name": "populations.name.keyword",
+    "populations.superpopulationCode": "populations.superpopulationCode.keyword",
+    "populations.superpopulationName": "populations.superpopulationName.keyword",
+}
+
+FIELD_MAP_POPULATION: Dict[str, str] = {
+    "dataCollections.title": "dataCollections.title.keyword",
+    "dataCollections.title.std": "dataCollections.title.keyword",
+}
+
+FIELD_MAP_FILE: Dict[str, str] = {
+    # FE sometimes uses shared UI names; normalise to the actual exact field.
+    "dataCollections.title": "dataCollections.keyword",
+    "dataCollections.title.std": "dataCollections.keyword",
+    # Native file fields that need exact matches
+    "dataCollections": "dataCollections.keyword",
+    "analysisGroup": "analysisGroup.keyword",
+    "dataType": "dataType.keyword",
+    "samples": "samples.keyword",
+    "populations": "populations.keyword",
+    "url": "url.keyword",
+    "url.keywords": "url.keyword",  # legacy plural
+}
+
+FIELD_MAP_DATA_COLLECTION: Dict[str, str] = {
+    "title": "title.keyword",
+    "title.std": "title.keyword",
+    "shortTitle": "shortTitle.keyword",
+    "shortTitle.std": "shortTitle.keyword",
+}
+
+# ---------------- Field normalisation ---------------------------
+
+# Elasticsearch exact-match filters (term/terms) must hit keyword fields
+# (untokenised; stored exactly), not analysed text fields (tokenised; e.g.
+# "Low coverage WGS" to ["low","coverage","wgs"]). The FE still sends legacy /
+# analysed names — e.g. url (to url.keyword), url.keywords (legacy alias,
+# normalised to url.keyword), dataCollections.title (to dataCollections.keyword),
+# analysisGroup (to analysisGroup.keyword), which which would return 0 hits if sent
+# straight to ES. The rewrite step maps these to their exact, modern counterparts
+# so existing payloads keep working. Full-text queries (match/multi_match)
+# are left unchanged; the rewrite only targets term/terms.
+
+def _normalise_field_to_keyword(field: str, field_map: Optional[Dict[str, str]] = None) -> str:
     """
-    Walk an Elasticsearch query and rewrite only term or terms fields using field_map,
-    so exact matches hit the right subfield (for example a .keyword subfield).
+    Convert a field name to its exact (.keyword) counterpart.
 
-    Leaves fields already pointing at .keyword and does not
-    mutate the input - returns a new structure.
+    Priority:
+      1) If already *.keyword: keep
+      2) If present in field_map: use mapped target
+      3) Generic legacy patterns:
+         - *.std -> *.keyword
+         - *.keywords -> *.keyword
+         - url -> url.keyword
+         - dataCollections.title -> dataCollections.title.keyword
+      4) Otherwise return the field unchanged.
+    """
+    if not isinstance(field, str):
+        return field
+    if field.endswith(".keyword"):
+        return field
+    if field_map and field in field_map:
+        return field_map[field]
+    if field.endswith(".std"):
+        return field[:-4] + ".keyword"
+    if field.endswith(".keywords"):
+        return field[:-9] + ".keyword"
+    if field == "url":
+        return "url.keyword"
+    if field == "dataCollections.title":
+        return "dataCollections.title.keyword"
+    return field
+
+def _normalise_fields_list(fields: Any, field_map: Optional[Dict[str, str]] = None) -> List[str]:
+    if not isinstance(fields, list):
+        return []
+    out: List[str] = []
+    for f in fields:
+        if isinstance(f, str):
+            out.append(_normalise_field_to_keyword(f, field_map))
+    return out
+
+def _rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
+    """
+    Rewrite field names inside `term` / `terms` clauses to their exact
+    (keyword) counterparts using `field_map` + generic rules. Everything else is unchanged.
+
+    Example:
+      IN : {"terms": {"dataCollections.title": ["1000 Genomes on GRCh38"]}}
+      OUT: {"terms": {"dataCollections.title.keyword": ["1000 Genomes on GRCh38"]}}
     """
     def _fix(field: str) -> str:
-        if field.endswith(".keyword"):
-            return field
-        return field_map.get(field, field)
+        return _normalise_field_to_keyword(field, field_map)
 
     if isinstance(node, dict):
-        out = {}
+        out: Dict[str, Any] = {}
         for k, v in node.items():
             if k in ("term", "terms") and isinstance(v, dict):
-                out[k] = { _fix(f): rewrite_terms_to_keyword(vv, field_map) for f, vv in v.items() }
+                out[k] = { _fix(f): _rewrite_terms_to_keyword(vv, field_map) for f, vv in v.items() }
             else:
-                out[k] = rewrite_terms_to_keyword(v, field_map)
+                out[k] = _rewrite_terms_to_keyword(v, field_map)
         return out
     if isinstance(node, list):
-        return [rewrite_terms_to_keyword(x, field_map) for x in node]
+        return [_rewrite_terms_to_keyword(x, field_map) for x in node]
     return node
 
-
+# wrappers so that imports to routers can be cleaner
 def rewrite_terms_for_samples(node: Any) -> Any:
-    """
-    Apply the field rewrites the Samples front end expects for exact filters.
-
-    Ensures filters target exact-match fields on the sample index:
-    - dataCollections.title and dataCollections.title.std -> dataCollections.title.keyword
-    - populations.* fields (elasticId, code, name, superpopulationCode, superpopulationName)
-      -> their .keyword subfields
-
-    These populations.* mappings are specific to the sample index and are not
-    present on the population index.
-    """
-    field_map = {
-        "dataCollections.title": "dataCollections.title.keyword",
-        "dataCollections.title.std": "dataCollections.title.keyword",
-        # population filters used by the FE
-        "populations.elasticId": "populations.elasticId.keyword",
-        "populations.code": "populations.code.keyword",
-        "populations.name": "populations.name.keyword",
-        "populations.superpopulationCode": "populations.superpopulationCode.keyword",
-        "populations.superpopulationName": "populations.superpopulationName.keyword",
-    }
-    return rewrite_terms_to_keyword(node, field_map)
-
+    return _rewrite_terms_to_keyword(node, FIELD_MAP_SAMPLES)
 
 def rewrite_terms_for_population(node: Any) -> Any:
-    """
-    Apply the field rewrites the Population front end expects for exact filters.
-
-    Populations are filtered by data collection title only, so we map:
-    - dataCollections.title and dataCollections.title.std -> dataCollections.title.keyword
-    """
-    field_map = {
-        "dataCollections.title": "dataCollections.title.keyword",
-        "dataCollections.title.std": "dataCollections.title.keyword",
-    }
-    return rewrite_terms_to_keyword(node, field_map)
+    return _rewrite_terms_to_keyword(node, FIELD_MAP_POPULATION)
 
 def rewrite_terms_for_file(node: Any) -> Any:
-    field_map = {
-        # FE sometimes sends these from shared UI
-        "dataCollections.title": "dataCollections.keyword",
-        "dataCollections.title.std": "dataCollections.keyword",
-        # Native file fields
-        "dataCollections": "dataCollections.keyword",
-        "analysisGroup": "analysisGroup.keyword",
-        "dataType": "dataType.keyword",
-        "samples": "samples.keyword",
-        "populations": "populations.keyword",
-        "url": "url.keyword",
-    }
-    return rewrite_terms_to_keyword(node, field_map)
+    return _rewrite_terms_to_keyword(node, FIELD_MAP_FILE)
+
+def rewrite_terms_for_data_collection(node: Any) -> Any:
+    return _rewrite_terms_to_keyword(node, FIELD_MAP_DATA_COLLECTION)
+
+# ---------------- Rewrite compose helper ------------------------
+
+def compose_rewrites(*fns: Callable[[Any], Any]) -> Callable[[Any], Any]:
+    def _chain(node: Any) -> Any:
+        return reduce(lambda acc, f: f(acc), fns, node)
+    return _chain
+
+# ---------------- Match rewrite helpers -------------------------
+
+def _add_wildcard_if_missing(q: Any) -> str:
+    """Add wildcards around a string if none are present."""
+    s = str(q or "").strip()
+    if "*" in s:
+        return s
+    return f"*{s}*"
+
+def rewrite_match_queries(node: Any) -> Any:
+    """
+    Broad matching:
+      - Normalise fields (e.g. *.std / *.keywords / url / dataCollections.title -> *.keyword).
+      - Add CI wildcard fallback on every *.keyword field (incl. url.keyword).
+      - Wrap in bool.should with minimum_should_match = 1.
+    """
+    if isinstance(node, dict):
+        # clean, normalise field and add wildcards in multi match style query (runs across multiple fields)
+        if "multi_match" in node and isinstance(node["multi_match"], dict):
+            mm = dict(node["multi_match"])
+            q = str(mm.get("query", "")).strip()
+            targets = _normalise_fields_list(mm.get("fields", []))
+            if targets:
+                mm["fields"] = targets
+
+            should: List[Dict[str, Any]] = [{"multi_match": mm}]
+            for t in targets:
+                if t.endswith(".keyword"):
+                    should.append({"wildcard": {t: {"value": _add_wildcard_if_missing(q), "case_insensitive": True}}})
+
+            return {"bool": {"should": should, "minimum_should_match": 1}}
+
+        # Recurse into nested structures
+        return {k: rewrite_match_queries(v) for k, v in node.items()}
+
+    if isinstance(node, list):
+        return [rewrite_match_queries(x) for x in node]
+    return node

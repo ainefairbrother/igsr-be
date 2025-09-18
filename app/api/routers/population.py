@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from app.services.es import es
 from app.core.config import settings
-from app.lib.es_utils import rewrite_terms_for_population
+from app.lib.es_utils import rewrite_terms_for_population, rewrite_match_queries, compose_rewrites
 from app.lib.search_utils import run_search
 from app.lib.dl_utils import export_tsv_response
 
@@ -27,7 +27,7 @@ def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
         INDEX,
         body,
         size_cap=settings.ES_ALL_SIZE_CAP,
-        rewrite=rewrite_terms_for_population
+        rewrite=compose_rewrites(rewrite_terms_for_population, rewrite_match_queries)
     )
 
 

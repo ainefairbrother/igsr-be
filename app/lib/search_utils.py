@@ -17,6 +17,7 @@ def run_search(
     default_sort: Optional[List[Dict[str, Any]]] = None,
     ensure: Optional[EnsureFn] = None,
     postprocess: Optional[PostprocFn] = None,
+    default_size: Optional[int] = 100,
 ) -> Dict[str, Any]:
     """
     Run a standardised Elasticsearch search and return a response shaped for the front end.
@@ -35,24 +36,30 @@ def run_search(
     es_body: Dict[str, Any] = body or {"query": {"match_all": {}}}
 
     size = es_body.get("size")
-    if isinstance(size, int) and size < 0:
-        es_body["size"] = size_cap
+    if size is None:
+        es_body["size"] = int(size_cap)
+    elif isinstance(size, int):
+        if size < 0 or size > size_cap:
+            es_body["size"] = size_cap
 
+    # ensure real total hits displayed on the FE
     es_body.setdefault("track_total_hits", True)
+    
     if default_sort and "sort" not in es_body:
         es_body["sort"] = default_sort
-
     if rewrite:
         es_body = rewrite(es_body)
     if ensure:
         es_body = ensure(es_body)
 
     try:
-        resp = es.search(index=index, body=es_body, ignore_unavailable=True)
+        raw = es.search(index=index, body=es_body, ignore_unavailable=True)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
 
+    resp: Dict[str, Any] = getattr(raw, "body", raw)
+    if not isinstance(resp, dict):
+        resp = dict(resp)
     if postprocess:
         resp = postprocess(resp, es_body)
-
     return normalise_es_response(resp)
