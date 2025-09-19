@@ -15,6 +15,7 @@ from app.lib.dl_utils import export_tsv_response
 from app.lib.es_utils import (
     rewrite_terms_for_file,
     rewrite_match_queries,
+    gate_short_text,
     compose_rewrites,
 )
 
@@ -37,7 +38,7 @@ def beta_search_files(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
         INDEX,
         body,
         size_cap=settings.ES_ALL_SIZE_CAP,
-        rewrite=compose_rewrites(rewrite_terms_for_file, rewrite_match_queries),
+        rewrite=compose_rewrites(gate_short_text(2), rewrite_terms_for_file, rewrite_match_queries),
         ensure=_ensure_file_query
     )
 
@@ -53,7 +54,7 @@ async def export_files_tsv(
         json_form=json_form,
         index=INDEX,
         filename=filename,
-        size_cap=settings.ES_ALL_SIZE_CAP,
+        size_cap=settings.ES_EXPORT_SIZE_CAP,
         default_fields=[
             "url",
             "md5",

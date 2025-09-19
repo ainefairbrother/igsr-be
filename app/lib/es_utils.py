@@ -111,6 +111,7 @@ def _normalise_field_to_keyword(field: str, field_map: Optional[Dict[str, str]] 
         return "dataCollections.title.keyword"
     return field
 
+
 def _normalise_fields_list(fields: Any, field_map: Optional[Dict[str, str]] = None) -> List[str]:
     if not isinstance(fields, list):
         return []
@@ -119,6 +120,7 @@ def _normalise_fields_list(fields: Any, field_map: Optional[Dict[str, str]] = No
         if isinstance(f, str):
             out.append(_normalise_field_to_keyword(f, field_map))
     return out
+
 
 def _rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
     """
@@ -144,15 +146,19 @@ def _rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
         return [_rewrite_terms_to_keyword(x, field_map) for x in node]
     return node
 
+
 # wrappers so that imports to routers can be cleaner
 def rewrite_terms_for_samples(node: Any) -> Any:
     return _rewrite_terms_to_keyword(node, FIELD_MAP_SAMPLES)
 
+
 def rewrite_terms_for_population(node: Any) -> Any:
     return _rewrite_terms_to_keyword(node, FIELD_MAP_POPULATION)
 
+
 def rewrite_terms_for_file(node: Any) -> Any:
     return _rewrite_terms_to_keyword(node, FIELD_MAP_FILE)
+
 
 def rewrite_terms_for_data_collection(node: Any) -> Any:
     return _rewrite_terms_to_keyword(node, FIELD_MAP_DATA_COLLECTION)
@@ -173,6 +179,18 @@ def _add_wildcard_if_missing(q: Any) -> str:
         return s
     return f"*{s}*"
 
+
+def _normalise_query_text(s: str) -> str:
+    """
+    Treat '+' as a space when queries arrive URL-encoded (e.g. 'MAGE+RNA-seq').
+    We only rewrite when there are no spaces already, to avoid mangling legit
+    plus signs in other contexts. This comes as a result of searching in the top 
+    right search box on the FE, which URL-encodes the query before sending to the BE.
+    """
+    s = str(s or "").strip()
+    return s.replace("+", " ") if (" " not in s and "+" in s) else s
+
+
 def rewrite_match_queries(node: Any) -> Any:
     """
     Broad matching:
@@ -181,18 +199,27 @@ def rewrite_match_queries(node: Any) -> Any:
       - Wrap in bool.should with minimum_should_match = 1.
     """
     if isinstance(node, dict):
-        # clean, normalise field and add wildcards in multi match style query (runs across multiple fields)
+        # multi_match: normalise fields AND query text (decode '+' -> space)
         if "multi_match" in node and isinstance(node["multi_match"], dict):
             mm = dict(node["multi_match"])
-            q = str(mm.get("query", "")).strip()
+
+            # normalise query text from URL-encoded inputs (top-right search box) (e.g. 'MAGE+RNA-seq')
+            q_raw = str(mm.get("query", "")).strip()
+            q = _normalise_query_text(q_raw)
+            mm["query"] = q
+
+            # normalise fields to their keyword equivalents
             targets = _normalise_fields_list(mm.get("fields", []))
             if targets:
                 mm["fields"] = targets
 
+            # keep original multi_match + add wildcard fallbacks
             should: List[Dict[str, Any]] = [{"multi_match": mm}]
             for t in targets:
                 if t.endswith(".keyword"):
-                    should.append({"wildcard": {t: {"value": _add_wildcard_if_missing(q), "case_insensitive": True}}})
+                    should.append({
+                        "wildcard": {t: {"value": _add_wildcard_if_missing(q), "case_insensitive": True}}
+                    })
 
             return {"bool": {"should": should, "minimum_should_match": 1}}
 
@@ -202,3 +229,41 @@ def rewrite_match_queries(node: Any) -> Any:
     if isinstance(node, list):
         return [rewrite_match_queries(x) for x in node]
     return node
+
+
+def gate_short_text(min_len: int = 2):
+    """
+    If a free-text query is shorter than `min_len`, replace it with match_none.
+    Applies only to texty queries (multi_match, query_string, simple_query_string,
+    match, match_phrase). Exact filters (term/terms) are left untouched.
+    """
+    def _gate(node: Any) -> Any:
+        if not isinstance(node, dict):
+            return node
+        qnode = node.get("query")
+        if not isinstance(qnode, dict):
+            return node
+
+        def _too_short(val: Any) -> bool:
+            s = str(val or "").strip()
+            return len(s) < min_len
+
+        # multi_match / query_string / simple_query_string
+        for key in ("multi_match", "query_string", "simple_query_string"):
+            v = qnode.get(key)
+            if isinstance(v, dict) and _too_short(v.get("query")):
+                node["query"] = {"match_none": {}}
+                return node
+
+        # match / match_phrase can be {"field": {"query": "..."} } or {"field": "..." }
+        for key in ("match", "match_phrase"):
+            v = qnode.get(key)
+            if isinstance(v, dict):
+                for spec in v.values():
+                    if (isinstance(spec, dict) and _too_short(spec.get("query"))) or \
+                       (isinstance(spec, str) and _too_short(spec)):
+                        node["query"] = {"match_none": {}}
+                        return node
+
+        return node
+    return _gate
