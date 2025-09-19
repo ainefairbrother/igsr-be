@@ -1,10 +1,9 @@
 # app/api/routers/sitemap.py
 from typing import Any, Dict, Optional, List, Callable
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Query
 
 from app.core.config import settings
-from app.services.es import es
-from app.lib.es_utils import normalise_es_response
+from app.lib.search_utils import run_search
 
 router = APIRouter(prefix="/sitemap", tags=["sitemap"])
 
@@ -16,10 +15,7 @@ DC_INDEX     = settings.INDEX_DATA_COLLECTIONS
 # ------------------------------- Helpers ------------------------------------ #
 
 def _extract_q_from_body(body: Optional[Dict[str, Any]]) -> str:
-    """
-    Pull a free-text query from typical ES request bodies:
-    multi_match, simple_query_string, query_string, match_phrase, match.
-    """
+    """Pull a free-text query from typical ES bodies: multi_match/simple/query_string/match_phrase/match."""
     if not isinstance(body, dict):
         return ""
     qnode = body.get("query") or body
@@ -53,35 +49,15 @@ def _extract_q_from_body(body: Optional[Dict[str, Any]]) -> str:
                     return str(spec["query"]).strip()
                 if isinstance(spec, str):
                     return spec.strip()
-
     return ""
 
-def _search(index: str, body: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        resp = es.search(index=index, body=body, ignore_unavailable=True)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
-    return normalise_es_response(resp)
-
 def _empty_resp() -> Dict[str, Any]:
-    return {
-        "took": 0,
-        "timed_out": False,
-        "hits": {"total": 0, "max_score": 0.0, "hits": []},
-        "aggregations": {},
-    }
+    return {"took": 0, "timed_out": False, "hits": {"total": 0, "max_score": 0.0, "hits": []}, "aggregations": {}}
 
 def _term_or_wildcard(
-    field: str,
-    q: str,
-    *,
-    allow_wildcard: bool = True,
-    min_len: int = 2,
-    case_insensitive: bool = True,
+    field: str, q: str, *, allow_wildcard: bool = True, min_len: int = 2, case_insensitive: bool = True,
 ) -> List[Dict[str, Any]]:
-    """
-    Exact term plus (optionally) a contains-style wildcard on a keyword field.
-    """
+    """Exact term plus (optionally) a contains-style wildcard on a keyword field."""
     clauses: List[Dict[str, Any]] = [{"term": {field: q}}]
     if allow_wildcard and len(q) >= min_len:
         wc: Dict[str, Any] = {"value": f"*{q}*"}
@@ -91,25 +67,18 @@ def _term_or_wildcard(
     return clauses
 
 def _box_body(
-    q: str,
-    *,
-    fields: List[str],
-    size: int,
-    sort: List[Dict[str, Any]],
+    q: str, *, fields: List[str], size: int, sort: List[Dict[str, Any]],
     extra_should: Optional[Callable[[str], List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
-    """
-    Build a standard 'box' query: OR of term+wildcard on each field, optional extras, sorted.
-    """
+    """Build a standard 'box' query: OR of term+wildcard on each field, optional extras, sorted."""
     should: List[Dict[str, Any]] = []
     for f in fields:
         should += _term_or_wildcard(f, q)
     if extra_should:
         should += extra_should(q)
-
     return {
-        "size": size,
-        "track_total_hits": True,
+        "size": size,                       # explicit size so run_search won’t default to the cap
+        "track_total_hits": True,           # real counts for the FE
         "query": {"bool": {"should": should, "minimum_should_match": 1}},
         "sort": sort,
         "_source": True,
@@ -144,12 +113,8 @@ BOXES = {
 @router.api_route("/_search", methods=["GET", "POST"])
 def search_sitemap(
     body: Optional[Dict[str, Any]] = Body(None),
-    q: Optional[str] = Query(
-        None, description="Free-text query; if omitted, inferred from an ES-style body."
-    ),
-    size: Optional[int] = Query(
-        None, ge=1, description="Max results per box (defaults to 10, capped by ES_ALL_SIZE_CAP)."
-    ),
+    q: Optional[str] = Query(None, description="Free-text query; if omitted, inferred from an ES-style body."),
+    size: Optional[int] = Query(None, ge=1, description="Max results per box (default 10, capped by ES_ALL_SIZE_CAP)."),
 ) -> Dict[str, Any]:
     """
     Returns the three boxes for the search page:
@@ -160,38 +125,29 @@ def search_sitemap(
     NOTE: The “matching data files” panel is intentionally omitted here;
     the FE loads it from /api/beta/file/_search.
     """
-    # 1) Decide query text
     raw_q = (q or "").strip() or _extract_q_from_body(body)
 
-    # 2) Decide size (query param wins, then body.size, else 10), clamp to cap
-    requested_size = size
-    if requested_size is None:
-        bsize = (body or {}).get("size")
-        requested_size = bsize if isinstance(bsize, int) and bsize > 0 else 10
+    requested_size = size if isinstance(size, int) and size > 0 else (body or {}).get("size") or 10
     capped_size = min(int(requested_size), int(settings.ES_ALL_SIZE_CAP))
 
-    # 3) No query → empty boxes (plus an empty 'files' stub for FE convenience)
     if not raw_q:
         empty = _empty_resp()
-        return {
-            "samples": empty,
-            "populations": empty,
-            "dataCollections": empty,
-            "files": empty,
-        }
+        return {"samples": empty, "populations": empty, "dataCollections": empty, "files": empty}
 
-    # 4) Build & run the three box searches from the spec
     results: Dict[str, Dict[str, Any]] = {}
     for name, spec in BOXES.items():
         body_spec = _box_body(
             raw_q,
             fields=spec["fields"],
-            size=capped_size,
+            size=capped_size, # explicit size respected by run_search
             sort=spec["sort"],
             extra_should=spec.get("extra_should"),
         )
-        results[name] = _search(spec["index"], body_spec)
+        results[name] = run_search(
+            index=spec["index"],
+            body=body_spec,
+            size_cap=settings.ES_ALL_SIZE_CAP,
+        )
 
-    # 5) Return boxes + empty files stub
-    results["files"] = _empty_resp()
+    results["files"] = _empty_resp() # FE fills this via /api/beta/file/_search
     return results

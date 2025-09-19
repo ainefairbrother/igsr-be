@@ -16,8 +16,7 @@ def run_search(
     rewrite: Optional[RewriteFn] = None,
     default_sort: Optional[List[Dict[str, Any]]] = None,
     ensure: Optional[EnsureFn] = None,
-    postprocess: Optional[PostprocFn] = None,
-    default_size: Optional[int] = 100,
+    postprocess: Optional[PostprocFn] = None
 ) -> Dict[str, Any]:
     """
     Run a standardised Elasticsearch search and return a response shaped for the front end.
@@ -42,7 +41,7 @@ def run_search(
         if size < 0 or size > size_cap:
             es_body["size"] = size_cap
 
-    # ensure real total hits displayed on the FE
+    # ensure real total hits displayed on the FE, not capped value
     es_body.setdefault("track_total_hits", True)
     
     if default_sort and "sort" not in es_body:
