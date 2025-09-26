@@ -16,6 +16,12 @@ from app.api.routers import sitemap
 
 app = FastAPI(title="IGSR API")
 
+@app.middleware("http")
+async def add_api_marker(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-IGSR-API"] = "beta"
+    return resp
+
 # CORS (Settings expects JSON array in .env)
 app.add_middleware(
     CORSMiddleware,

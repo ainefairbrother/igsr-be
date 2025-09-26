@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     INDEX_POPULATION: str = "population"
     INDEX_SUPERPOPULATION: str = "superpopulation"
     INDEX_FILE: str = "file"
+    INDEX_SITEMAP: str = "sitemap"
     
     # When FE sends size:-1 ("all"), limit to this many hits in one request
     # This is because Elasticsearch’s size window is capped by the index setting max_result_window (which defaults to 10,000)
