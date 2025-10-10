@@ -275,7 +275,6 @@ def _is_blank(x: Any) -> bool:
     if isinstance(x, str):
         return x.strip() == ""
     if isinstance(x, (list, tuple, set)):
-        # treat lists full of blanks as blank too
         return len(x) == 0 or all(_is_blank(i) for i in x)
     if isinstance(x, dict):
         return len(x) == 0
