@@ -1,7 +1,9 @@
 fastapi==0.112.*
 uvicorn[standard]==0.30.*
+gunicorn>=21.2
 pydantic-settings==2.*
-elasticsearch==8.*
+elasticsearch==8.17.2
 orjson==3.*
 python-dotenv==1.*
 python-multipart==0.0.*
+requests>=2
