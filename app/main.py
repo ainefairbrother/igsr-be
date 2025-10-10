@@ -19,7 +19,8 @@ app = FastAPI(title="IGSR API")
 @app.middleware("http")
 async def add_api_marker(request: Request, call_next):
     resp = await call_next(request)
-    resp.headers["X-IGSR-API"] = "beta"
+    resp.headers["x-igsr-api"] = "Python FastAPI"
+    resp.headers["x-igsr-api-version"] = "2025"
     return resp
 
 # CORS (Settings expects JSON array in .env)

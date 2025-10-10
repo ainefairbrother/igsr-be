@@ -1,6 +1,5 @@
 from typing import Any, Callable, Dict, List, Optional
 from functools import reduce
-from collections import deque
 
 # ---------------- Normalise ES response -------------------------
 
@@ -147,7 +146,7 @@ def _rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
     return node
 
 
-# wrappers so that imports to routers can be cleaner
+# wrappers to make imports to routers can be cleaner
 def rewrite_terms_for_samples(node: Any) -> Any:
     return _rewrite_terms_to_keyword(node, FIELD_MAP_SAMPLES)
 
