@@ -16,7 +16,8 @@ from app.lib.es_utils import (
     gate_short_text,
     rewrite_terms_for_population, 
     rewrite_match_queries, 
-    compose_rewrites
+    compose_rewrites,
+    prune_empty_fields
 )
 
 router = APIRouter(prefix="/beta/population", tags=["population"])
@@ -50,7 +51,10 @@ def get_population(pid: str = Path(..., description="Population identifier (ES _
     try:
         doc = es.get(index=INDEX, id=pid, ignore=[404])
         if doc and doc.get("found"):
-            return {"_source": doc.get("_source", {})}
+            src = doc.get("_source", {}) or {}
+            if isinstance(src, dict):
+                prune_empty_fields(src, keys=("overlappingPopulations",)) # removal means FE won't render empty box
+            return {"_source": src}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
 
@@ -62,7 +66,10 @@ def get_population(pid: str = Path(..., description="Population identifier (ES _
         )
         hit = (resp.get("hits", {}) or {}).get("hits", [])
         if hit:
-            return {"_source": hit[0].get("_source", {})}
+            src = hit[0].get("_source", {}) or {}
+            if isinstance(src, dict):
+                prune_empty_fields(src, keys=("overlappingPopulations",)) 
+            return {"_source": src}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
 

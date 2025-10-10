@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 from functools import reduce
 
 # ---------------- Normalise ES response -------------------------
@@ -266,3 +266,26 @@ def gate_short_text(min_len: int = 2):
 
         return node
     return _gate
+
+# ---------------- Prune empty fields helper ----------------------
+
+def _is_blank(x: Any) -> bool:
+    if x is None:
+        return True
+    if isinstance(x, str):
+        return x.strip() == ""
+    if isinstance(x, (list, tuple, set)):
+        # treat lists full of blanks as blank too
+        return len(x) == 0 or all(_is_blank(i) for i in x)
+    if isinstance(x, dict):
+        return len(x) == 0
+    return False
+
+def prune_empty_fields(doc: Dict[str, Any], keys: Iterable[str]) -> Dict[str, Any]:
+    if not isinstance(doc, dict):
+        return doc
+    for k in keys:
+        v = doc.get(k)
+        if _is_blank(v):
+            doc.pop(k, None)
+    return doc

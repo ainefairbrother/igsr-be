@@ -16,7 +16,8 @@ from app.lib.es_utils import(
     gate_short_text,
     rewrite_terms_for_samples, 
     rewrite_match_queries, 
-    compose_rewrites
+    compose_rewrites, 
+    prune_empty_fields
 )
 
 router = APIRouter(prefix="/beta/sample", tags=["samples"])
@@ -52,7 +53,10 @@ def get_sample(name: str = Path(..., description="Sample identifier (often the E
     try:
         doc = es.get(index=INDEX, id=name, ignore=[404])
         if doc and doc.get("found"):
-            return {"_source": doc.get("_source", {})}
+            src = doc.get("_source", {}) or {}
+            if isinstance(src, dict):
+                prune_empty_fields(src, keys=("sharedSamples",))  # removal means FE won't render empty box
+            return {"_source": src}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
 
@@ -65,7 +69,10 @@ def get_sample(name: str = Path(..., description="Sample identifier (often the E
         )
         hit = (resp.get("hits", {}) or {}).get("hits", [])
         if hit:
-            return {"_source": hit[0].get("_source", {})}
+            src = hit[0].get("_source", {}) or {}
+            if isinstance(src, dict):
+                prune_empty_fields(src, keys=("sharedSamples",))
+            return {"_source": src}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
 
