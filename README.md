@@ -14,9 +14,9 @@ When finished, browse **http://localhost:8080/** — the FE will talk to this BE
 ## Repos you’ll need
 
 - **Frontend (FE):** branch from PR https://github.com/igsr/gca_1000genomes_website/pull/68
-- **Backend (BE):** https://github.com/ainefairbrother/igsr-be/tree/main (will move to `igsr/igsr-be`)
+- **Backend (BE):** https://github.com/igsr/igsr-be
 - **Indexing utilities (to create ES indices):** branch from PR https://github.com/igsr/es-py/pull/2
-  > Use es-py repo to **load data & create indices** in your local ES - es-py README contains instructions for this.
+  > Use es-py repo to **load data & create indices** in your local ES - https://github.com/igsr/es-py/pull/2 README contains instructions for this.
 
 ## Prerequisites
 
