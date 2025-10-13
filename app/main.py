@@ -1,5 +1,6 @@
-# app/main.py
+import logging
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.requests import Request
@@ -15,6 +16,7 @@ from app.api.routers import file
 from app.api.routers import sitemap
 
 app = FastAPI(title="IGSR API")
+log = logging.getLogger("uvicorn.error")
 
 @app.middleware("http")
 async def add_api_marker(request: Request, call_next):
@@ -32,6 +34,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include all routers
 app.include_router(health.router)
 app.include_router(samples.router)
 app.include_router(data_collections.router)
@@ -45,7 +48,8 @@ app.include_router(sitemap.router)
 def root():
     return {"ok": True}
 
+# return a generic JSON error instead of internal messages/logs and capture the trace in the log
 @app.exception_handler(Exception)
 async def json_errors(request: Request, exc: Exception):
-    # don’t leak internals; return a generic JSON error
+    log.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(status_code=500, content={"error": "internal_server_error"})
