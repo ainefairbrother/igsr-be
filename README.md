@@ -11,8 +11,6 @@ Use this guide to run the full stack locally:
 
 When finished, browse **http://localhost:8080/** — the FE will talk to this BE, which talks to the local ES instance.
 
----
-
 ## Repos you’ll need
 
 - **Frontend (FE):** branch from PR https://github.com/igsr/gca_1000genomes_website/pull/68
@@ -20,14 +18,10 @@ When finished, browse **http://localhost:8080/** — the FE will talk to this BE
 - **Indexing utilities (to create ES indices):** branch from PR https://github.com/igsr/es-py/pull/2
   > Use es-py repo to **load data & create indices** in your local ES - es-py README contains instructions for this.
 
----
-
 ## Prerequisites
 
 - Docker (and Docker Compose optionally)
 - Local ports: **9200** (ES), **8000** (API), **8080** (FE)
-
----
 
 ## 1) Build the images
 
@@ -43,8 +37,6 @@ cd gca_1000genomes_website
 docker build --no-cache -t igsr-fe .
 ```
 
----
-
 ## 2) Create a shared Docker network
 
 All three containers will discover each other by **name** on this network:
@@ -52,8 +44,6 @@ All three containers will discover each other by **name** on this network:
 ```bash
 docker network create igsr || true
 ```
-
----
 
 ## 3) Run Elasticsearch (single-node)
 
@@ -73,8 +63,6 @@ Check that it's working:
 curl -s http://localhost:9200 | jq .
 ```
 
----
-
 ## 4) Prepare the Backend `.env`
 
 In the **igsr-be** repo directory create **`.env`**:
@@ -87,8 +75,6 @@ CORS_ALLOW_ORIGINS=[http://localhost:8080]
 # For BE container: talk to ES by its container name on the shared network
 ES_HOST=http://es01:9200
 ```
-
----
 
 ## 5) Run the Backend API
 
@@ -114,8 +100,6 @@ curl -s http://localhost:8000/beta/sample/_search \
   --data '{"query":{"match_all":{}},"size":1}' | jq .
 ```
 
----
-
 ## 6) Load Elasticsearch indices
 
 Follow the **es-py** README to **create/populate** these indices in local ES:
@@ -138,8 +122,6 @@ Quick ES sanity check:
 curl -s 'http://localhost:9200/_cat/indices?v'
 ```
 
----
-
 ## 7) Run the Frontend
 
 Point FE at the BE by **container name** (`igsr-be`) on the shared network:
@@ -160,8 +142,6 @@ The FE will call endpoints like:
 /api/beta/population/_search
 ...
 ```
-
----
 
 ## 8) End-to-end verification
 
