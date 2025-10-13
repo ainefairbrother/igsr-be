@@ -3,7 +3,7 @@ import os
 # Cloud Run injects PORT
 bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"
 
-# Sensible defaults for Cloud Run single CPU; tune if you allocate more CPU
+# Sensible defaults for Cloud Run single CPU
 workers = int(os.getenv("WEB_CONCURRENCY", "1"))
 threads = int(os.getenv("THREADS_PER_WORKER", "8"))
 
