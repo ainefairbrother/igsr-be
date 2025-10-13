@@ -1,8 +1,6 @@
-# app/lib/dl_utils.py
 from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 from fastapi import HTTPException, Request, Response
 import json
-
 from app.services.es import es
 
 modified_json = Union[str, int, float, bool, None, List[Any], Dict[str, Any]]

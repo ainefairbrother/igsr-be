@@ -1,4 +1,3 @@
-# app/lib/search_utils.py
 from typing import Any, Dict, Callable, Optional, List
 from fastapi import HTTPException
 from app.services.es import es

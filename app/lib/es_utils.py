@@ -193,31 +193,29 @@ def _normalise_query_text(s: str) -> str:
 def rewrite_match_queries(node: Any) -> Any:
     """
     Broad matching:
-      - Normalise fields (e.g. *.std / *.keywords / url / dataCollections.title -> *.keyword).
-      - Add CI wildcard fallback on every *.keyword field (incl. url.keyword).
+      - Keep multi_match on analysed fields (do NOT convert to .keyword).
+      - Add CI wildcard fallbacks against the *.keyword siblings of those fields.
       - Wrap in bool.should with minimum_should_match = 1.
     """
     if isinstance(node, dict):
-        # multi_match: normalise fields AND query text (decode '+' -> space)
-        if "multi_match" in node and isinstance(node["multi_match"], dict):
-            mm = dict(node["multi_match"])
-
-            # normalise query text from URL-encoded inputs (top-right search box) (e.g. 'MAGE+RNA-seq')
+        mm = node.get("multi_match")
+        if isinstance(mm, dict):
+            # normalise query text (e.g. decode 'MAGE+RNA-seq' -> 'MAGE RNA-seq')
             q_raw = str(mm.get("query", "")).strip()
             q = _normalise_query_text(q_raw)
-            mm["query"] = q
 
-            # normalise fields to their keyword equivalents
-            targets = _normalise_fields_list(mm.get("fields", []))
-            if targets:
-                mm["fields"] = targets
+            # keep the original multi_match (do not touch its fields)
+            mm = dict(mm, query=q)
+            analysed_fields = mm.get("fields", []) or []
 
-            # keep original multi_match + add wildcard fallbacks
             should: List[Dict[str, Any]] = [{"multi_match": mm}]
-            for t in targets:
-                if t.endswith(".keyword"):
+
+            # add keyword wildcards as fallbacks
+            for f in analysed_fields:
+                kf = _normalise_field_to_keyword(f)  # url -> url.keyword, *.std -> *.keyword, etc.
+                if isinstance(kf, str) and kf.endswith(".keyword"):
                     should.append({
-                        "wildcard": {t: {"value": _add_wildcard_if_missing(q), "case_insensitive": True}}
+                        "wildcard": { kf: { "value": _add_wildcard_if_missing(q), "case_insensitive": True } }
                     })
 
             return {"bool": {"should": should, "minimum_should_match": 1}}
@@ -268,6 +266,8 @@ def gate_short_text(min_len: int = 2):
     return _gate
 
 # ---------------- Prune empty fields helper ----------------------
+# Remove keys with blank values (None, "", [], etc) from a dict to 
+# prevent empty box appearing on the FE
 
 def _is_blank(x: Any) -> bool:
     if x is None:
