@@ -4,9 +4,9 @@ from typing import List
 
 class Settings(BaseSettings):
     PORT: int = 8000
-    CORS_ALLOW_ORIGINS: List[str] = ["http://localhost:8080"]
+    CORS_ALLOW_ORIGINS: List[str] = [""]
 
-    ES_HOST: str = "http://localhost:9200"
+    ES_HOST: str = ""
     ES_USERNAME: str | None = None
     ES_PASSWORD: str | None = None
     ES_API_KEY: str | None = None
