@@ -103,7 +103,7 @@ async def export_tsv_response(
     - Caps size to protect the cluster
     - Queries ES and renders hits to a TSV using iter_hits_as_rows
     """
-    # 1) Parse payload (form 'json' wins over raw body)
+    # Parse payload
     payload: Dict[str, Any] = {}
     if json_form is not None:
         try:
@@ -127,21 +127,21 @@ async def export_tsv_response(
             except Exception as e:
                 raise HTTPException(status_code=422, detail=f"Invalid form 'json': {e}")
 
-    # 2) Extract request parts
+    # Extract request parts
     fields: List[str] = list(payload.get("fields") or [])
     column_names: List[str] = list(payload.get("column_names") or fields)
     query: Dict[str, Any] = payload.get("query") or {"match_all": {}}
 
-    # 3) Optional field rewrites for exact matching
+    # Field rewrites for exact matching
     if rewrite:
         query = rewrite(query)
 
-    # 4) Cap size
+    # Cap size
     size = payload.get("size")
     if not isinstance(size, int) or size < 0 or size > size_cap:
         size = size_cap
 
-    # 5) Query ES
+    # Query ES
     try:
         resp = es.search(
             index=index,
@@ -153,17 +153,17 @@ async def export_tsv_response(
 
     hits = (resp.get("hits") or {}).get("hits") or []
 
-    # 6) Columns and header
+    # Columns and header
     if not fields:
         fields = default_fields
     header = "\t".join(column_names) if column_names and len(column_names) == len(fields) else "\t".join(fields)
 
-    # 7) Build TSV
+    # Build TSV
     lines = [header] if header else []
     lines.extend(iter_hits_as_rows(hits, fields))
     tsv = ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
 
-    # 8) Response
+    # Response
     return Response(
         content=tsv,
         media_type="text/tab-separated-values",
