@@ -1,8 +1,6 @@
-# app/api/routers/samples.py
 """
 Samples router
 ==============
-FE path: /api/beta/sample/*  ->  here: /beta/sample/*
 """
 
 from fastapi import APIRouter, HTTPException, Response, Form, Body, Path, Request

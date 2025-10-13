@@ -1,4 +1,8 @@
-# app/api/routers/sitemap.py
+"""
+Sitemap router
+=======================
+"""
+
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Body
 

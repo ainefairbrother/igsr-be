@@ -1,8 +1,6 @@
-# app/api/routers/analysis_group.py
 """
 Analysis Group router
 =====================
-FE path: /api/beta/analysis-group/*  ->  here: /beta/analysis-group/*
 """
 
 from typing import Any, Dict, Optional

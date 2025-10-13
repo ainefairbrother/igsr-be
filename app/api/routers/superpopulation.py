@@ -1,8 +1,6 @@
-# app/api/routers/superpopulation.py
 """
 Superpopulation router
 =======================
-FE path: /api/beta/superpopulation/*  ->  here: /beta/superpopulation/*
 """
 
 from fastapi import APIRouter, Body

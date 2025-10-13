@@ -52,8 +52,10 @@ def run_search(
 
     try:
         raw = es.search(index=index, body=es_body, ignore_unavailable=True)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="backend_unavailable")
 
     resp: Dict[str, Any] = getattr(raw, "body", raw)
     if not isinstance(resp, dict):

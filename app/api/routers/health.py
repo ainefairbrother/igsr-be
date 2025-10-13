@@ -1,8 +1,6 @@
-# app/api/routers/health.py
 """
 Health router
 =============
-FE path: /api/beta/health  ->  here: /beta/health
 """
 
 from typing import Dict

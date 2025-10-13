@@ -1,7 +1,6 @@
 """
 File router
-=================
-FE path: /api/beta/file/*  ->  here: /beta/file/*
+===========
 """
 
 from __future__ import annotations

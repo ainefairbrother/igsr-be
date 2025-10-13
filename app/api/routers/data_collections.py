@@ -1,8 +1,6 @@
-# app/api/routers/data_collections.py
 """
 Data Collections router
 =======================
-FE path: /api/beta/data-collection/*  ->  here: /beta/data-collection/*
 """
 
 from fastapi import APIRouter, Body

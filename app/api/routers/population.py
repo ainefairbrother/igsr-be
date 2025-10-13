@@ -1,8 +1,6 @@
-# app/api/routers/population.py
 """
 Population router
 =================
-FE path: /api/beta/population/*  ->  here: /beta/population/*
 """
 
 from fastapi import APIRouter, HTTPException, Body, Path, Request, Form, Response
