@@ -134,3 +134,12 @@ docker run --rm --name igsr-fe --network igsr \
 ```
 
 Open the site: **http://localhost:8080/**
+
+## Changes to `igsr-be` code
+
+If you make changes, please ensure you run the unit tests.
+
+```bash
+cd igsr-be
+pytest -s
+```
