@@ -18,12 +18,14 @@ from app.api.routers import sitemap
 app = FastAPI(title="IGSR API")
 log = logging.getLogger("uvicorn.error")
 
+
 @app.middleware("http")
 async def add_api_marker(request: Request, call_next):
     resp = await call_next(request)
     resp.headers["x-igsr-api"] = "Python FastAPI"
     resp.headers["x-igsr-api-version"] = "2025"
     return resp
+
 
 # CORS (Settings expects JSON array in .env)
 app.add_middleware(
@@ -44,9 +46,11 @@ app.include_router(superpopulation.router)
 app.include_router(file.router)
 app.include_router(sitemap.router)
 
+
 @app.get("/")
 def root():
     return {"ok": True}
+
 
 # return a generic JSON error instead of internal messages/logs and capture the trace in the log
 @app.exception_handler(Exception)

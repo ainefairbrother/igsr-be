@@ -1,5 +1,8 @@
 # Python
 __pycache__/
+app/api/routers/__init__.py
+app/__init__.py
+__init__.py
 *.py[cod]
 *.egg-info/
 .eggs/
@@ -13,10 +16,9 @@ env/
 .pytest_cache/
 .mypy_cache/
 
-# OS noise
+# OS
 .DS_Store
 
 # Local config/secrets
 .env
-.env.*
 *.local.json

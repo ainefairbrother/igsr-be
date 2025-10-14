@@ -11,6 +11,7 @@ router = APIRouter(prefix="/beta", tags=["health"])
 
 # ------------------------------ Endpoints ------------------------------------
 
+
 # curl -s -XGET http://localhost:8080/api/beta/health | jq
 @router.get("/health")
 def health() -> Dict[str, str]:

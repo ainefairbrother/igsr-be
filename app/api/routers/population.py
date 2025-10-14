@@ -12,16 +12,17 @@ from app.lib.search_utils import run_search
 from app.lib.dl_utils import export_tsv_response
 from app.lib.es_utils import (
     gate_short_text,
-    rewrite_terms_for_population, 
-    rewrite_match_queries, 
+    rewrite_terms_for_population,
+    rewrite_match_queries,
     compose_rewrites,
-    prune_empty_fields
+    prune_empty_fields,
 )
 
 router = APIRouter(prefix="/beta/population", tags=["population"])
 INDEX = settings.INDEX_POPULATION
 
 # ------------------------------ Endpoints ------------------------------------ #
+
 
 @router.post("/_search")
 def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
@@ -32,15 +33,15 @@ def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
         body,
         size_cap=settings.ES_ALL_SIZE_CAP,
         rewrite=compose_rewrites(
-            gate_short_text(2),
-            rewrite_terms_for_population, 
-            rewrite_match_queries
-            )
+            gate_short_text(2), rewrite_terms_for_population, rewrite_match_queries
+        ),
     )
 
 
 @router.get("/{pid}")
-def get_population(pid: str = Path(..., description="Population identifier (ES _id or elasticId)")) -> Dict[str, Any]:
+def get_population(
+    pid: str = Path(..., description="Population identifier (ES _id or elasticId)"),
+) -> Dict[str, Any]:
     """
     GET /beta/population/{pid}
 
@@ -51,7 +52,9 @@ def get_population(pid: str = Path(..., description="Population identifier (ES _
         if doc and doc.get("found"):
             src = doc.get("_source", {}) or {}
             if isinstance(src, dict):
-                prune_empty_fields(src, keys=("overlappingPopulations",)) # removal means FE won't render empty box
+                prune_empty_fields(
+                    src, keys=("overlappingPopulations",)
+                )  # removal means FE won't render empty box
             return {"_source": src}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
@@ -59,14 +62,18 @@ def get_population(pid: str = Path(..., description="Population identifier (ES _
     try:
         resp = es.search(
             index=INDEX,
-            body={"size": 1, "query": {"term": {"elasticId.keyword": pid}}, "_source": True},
+            body={
+                "size": 1,
+                "query": {"term": {"elasticId.keyword": pid}},
+                "_source": True,
+            },
             ignore_unavailable=True,
         )
         hit = (resp.get("hits", {}) or {}).get("hits", [])
         if hit:
             src = hit[0].get("_source", {}) or {}
             if isinstance(src, dict):
-                prune_empty_fields(src, keys=("overlappingPopulations",)) 
+                prune_empty_fields(src, keys=("overlappingPopulations",))
             return {"_source": src}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
@@ -86,6 +93,12 @@ async def export_populations_tsv(
         index=INDEX,
         filename=filename,
         size_cap=settings.ES_EXPORT_SIZE_CAP,
-        default_fields=["elasticId", "name", "superpopulation.name", "latitude", "longitude"],
+        default_fields=[
+            "elasticId",
+            "name",
+            "superpopulation.name",
+            "latitude",
+            "longitude",
+        ],
         rewrite=rewrite_terms_for_population,
     )

@@ -10,18 +10,19 @@ from app.services.es import es
 from app.core.config import settings
 from app.lib.search_utils import run_search
 from app.lib.dl_utils import export_tsv_response
-from app.lib.es_utils import(
+from app.lib.es_utils import (
     gate_short_text,
-    rewrite_terms_for_samples, 
-    rewrite_match_queries, 
-    compose_rewrites, 
-    prune_empty_fields
+    rewrite_terms_for_samples,
+    rewrite_match_queries,
+    compose_rewrites,
+    prune_empty_fields,
 )
 
 router = APIRouter(prefix="/beta/sample", tags=["samples"])
 INDEX = settings.INDEX_SAMPLE
 
 # ------------------------------ Endpoints ------------------------------------
+
 
 @router.post("/_search")
 def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
@@ -33,15 +34,15 @@ def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any
         body,
         size_cap=settings.ES_ALL_SIZE_CAP,
         rewrite=compose_rewrites(
-            gate_short_text(2),
-            rewrite_terms_for_samples, 
-            rewrite_match_queries
-        )
+            gate_short_text(2), rewrite_terms_for_samples, rewrite_match_queries
+        ),
     )
 
 
 @router.get("/{name}")
-def get_sample(name: str = Path(..., description="Sample identifier (often the ES _id)")) -> Dict[str, Any]:
+def get_sample(
+    name: str = Path(..., description="Sample identifier (often the ES _id)"),
+) -> Dict[str, Any]:
     """
     GET /beta/sample/{name}
 
@@ -53,7 +54,9 @@ def get_sample(name: str = Path(..., description="Sample identifier (often the E
         if doc and doc.get("found"):
             src = doc.get("_source", {}) or {}
             if isinstance(src, dict):
-                prune_empty_fields(src, keys=("sharedSamples",))  # removal means FE won't render empty box
+                prune_empty_fields(
+                    src, keys=("sharedSamples",)
+                )  # removal means FE won't render empty box
             return {"_source": src}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}") from e
@@ -62,7 +65,11 @@ def get_sample(name: str = Path(..., description="Sample identifier (often the E
     try:
         resp = es.search(
             index=INDEX,
-            body={"size": 1, "query": {"term": {"name.keyword": name}}, "_source": True},
+            body={
+                "size": 1,
+                "query": {"term": {"name.keyword": name}},
+                "_source": True,
+            },
             ignore_unavailable=True,
         )
         hit = (resp.get("hits", {}) or {}).get("hits", [])

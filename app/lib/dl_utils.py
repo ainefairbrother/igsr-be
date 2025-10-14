@@ -4,6 +4,8 @@ import json
 from app.services.es import es
 
 modified_json = Union[str, int, float, bool, None, List[Any], Dict[str, Any]]
+
+
 def get_nested(source: Dict[str, Any], path: str) -> modified_json:
     """
     Resolve a dotted _source path for TSV export, for example a.b.c.
@@ -62,7 +64,9 @@ def to_tsv_cell(value: Any, sep: str = ",") -> str:
     return s.replace("\t", " ").replace("\r", " ").replace("\n", " ")
 
 
-def iter_hits_as_rows(hits: Iterable[Dict[str, Any]], columns: List[str], sep: str = ",") -> Iterable[str]:
+def iter_hits_as_rows(
+    hits: Iterable[Dict[str, Any]], columns: List[str], sep: str = ","
+) -> Iterable[str]:
     """
     Yield tab-separated lines for TSV downloads from Elasticsearch hits.
 
@@ -82,9 +86,11 @@ def iter_hits_as_rows(hits: Iterable[Dict[str, Any]], columns: List[str], sep: s
                 val = get_nested(src, col)
             row.append(to_tsv_cell(val, sep=sep))
         yield "\t".join(row)
-        
+
 
 RewriteFn = Callable[[Any], Any]
+
+
 async def export_tsv_response(
     *,
     request: Request,
@@ -121,7 +127,9 @@ async def export_tsv_response(
             form = await request.form()
             raw = form.get("json")
             if not raw:
-                raise HTTPException(status_code=422, detail="Missing JSON body or form field 'json'")
+                raise HTTPException(
+                    status_code=422, detail="Missing JSON body or form field 'json'"
+                )
             try:
                 payload = json.loads(raw)
             except Exception as e:
@@ -145,7 +153,12 @@ async def export_tsv_response(
     try:
         resp = es.search(
             index=index,
-            body={"query": query, "_source": True, "size": size, "track_total_hits": True},
+            body={
+                "query": query,
+                "_source": True,
+                "size": size,
+                "track_total_hits": True,
+            },
             ignore_unavailable=True,
         )
     except Exception as e:
@@ -156,7 +169,11 @@ async def export_tsv_response(
     # Columns and header
     if not fields:
         fields = default_fields
-    header = "\t".join(column_names) if column_names and len(column_names) == len(fields) else "\t".join(fields)
+    header = (
+        "\t".join(column_names)
+        if column_names and len(column_names) == len(fields)
+        else "\t".join(fields)
+    )
 
     # Build TSV
     lines = [header] if header else []
