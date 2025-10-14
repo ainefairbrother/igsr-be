@@ -3,9 +3,10 @@ from fastapi import HTTPException
 from app.services.es import es
 from app.lib.es_utils import normalise_es_response
 
-RewriteFn   = Callable[[Any], Any]
-EnsureFn    = Callable[[Dict[str, Any]], Dict[str, Any]]
-PostprocFn  = Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]
+RewriteFn = Callable[[Any], Any]
+EnsureFn = Callable[[Dict[str, Any]], Dict[str, Any]]
+PostprocFn = Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]
+
 
 def run_search(
     index: str,
@@ -15,7 +16,7 @@ def run_search(
     rewrite: Optional[RewriteFn] = None,
     default_sort: Optional[List[Dict[str, Any]]] = None,
     ensure: Optional[EnsureFn] = None,
-    postprocess: Optional[PostprocFn] = None
+    postprocess: Optional[PostprocFn] = None,
 ) -> Dict[str, Any]:
     """
     Run a standardised Elasticsearch search and return a response shaped for the front end.
@@ -42,7 +43,7 @@ def run_search(
 
     # ensure real total hits displayed on the FE, not capped value
     es_body.setdefault("track_total_hits", True)
-    
+
     if default_sort and "sort" not in es_body:
         es_body["sort"] = default_sort
     if rewrite:

@@ -3,6 +3,7 @@ from functools import reduce
 
 # ---------------- Normalise ES response -------------------------
 
+
 def normalise_es_response(resp: Dict[str, Any]) -> Dict[str, Any]:
     took = resp.get("took", 0)
     timed_out = resp.get("timed_out", False)
@@ -29,6 +30,7 @@ def normalise_es_response(resp: Dict[str, Any]) -> Dict[str, Any]:
         out["total"] = resp["total"]
 
     return out
+
 
 # ---------------- Term/terms to .keyword constants --------------
 
@@ -80,7 +82,10 @@ FIELD_MAP_DATA_COLLECTION: Dict[str, str] = {
 # so existing payloads keep working. Full-text queries (match/multi_match)
 # are left unchanged; the rewrite only targets term/terms.
 
-def _normalise_field_to_keyword(field: str, field_map: Optional[Dict[str, str]] = None) -> str:
+
+def _normalise_field_to_keyword(
+    field: str, field_map: Optional[Dict[str, str]] = None
+) -> str:
     """
     Convert a field name to its exact (.keyword) counterpart.
 
@@ -111,7 +116,9 @@ def _normalise_field_to_keyword(field: str, field_map: Optional[Dict[str, str]] 
     return field
 
 
-def _normalise_fields_list(fields: Any, field_map: Optional[Dict[str, str]] = None) -> List[str]:
+def _normalise_fields_list(
+    fields: Any, field_map: Optional[Dict[str, str]] = None
+) -> List[str]:
     if not isinstance(fields, list):
         return []
     out: List[str] = []
@@ -130,6 +137,7 @@ def _rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
       IN : {"terms": {"dataCollections.title": ["1000 Genomes on GRCh38"]}}
       OUT: {"terms": {"dataCollections.title.keyword": ["1000 Genomes on GRCh38"]}}
     """
+
     def _fix(field: str) -> str:
         return _normalise_field_to_keyword(field, field_map)
 
@@ -137,7 +145,10 @@ def _rewrite_terms_to_keyword(node: Any, field_map: Dict[str, str]) -> Any:
         out: Dict[str, Any] = {}
         for k, v in node.items():
             if k in ("term", "terms") and isinstance(v, dict):
-                out[k] = { _fix(f): _rewrite_terms_to_keyword(vv, field_map) for f, vv in v.items() }
+                out[k] = {
+                    _fix(f): _rewrite_terms_to_keyword(vv, field_map)
+                    for f, vv in v.items()
+                }
             else:
                 out[k] = _rewrite_terms_to_keyword(v, field_map)
         return out
@@ -162,14 +173,19 @@ def rewrite_terms_for_file(node: Any) -> Any:
 def rewrite_terms_for_data_collection(node: Any) -> Any:
     return _rewrite_terms_to_keyword(node, FIELD_MAP_DATA_COLLECTION)
 
+
 # ---------------- Rewrite compose helper ------------------------
+
 
 def compose_rewrites(*fns: Callable[[Any], Any]) -> Callable[[Any], Any]:
     def _chain(node: Any) -> Any:
         return reduce(lambda acc, f: f(acc), fns, node)
+
     return _chain
 
+
 # ---------------- Match rewrite helpers -------------------------
+
 
 def _add_wildcard_if_missing(q: Any) -> str:
     """Add wildcards around a string if none are present."""
@@ -183,7 +199,7 @@ def _normalise_query_text(s: str) -> str:
     """
     Treat '+' as a space when queries arrive URL-encoded (e.g. 'MAGE+RNA-seq').
     We only rewrite when there are no spaces already, to avoid mangling legit
-    plus signs in other contexts. This comes as a result of searching in the top 
+    plus signs in other contexts. This comes as a result of searching in the top
     right search box on the FE, which URL-encodes the query before sending to the BE.
     """
     s = str(s or "").strip()
@@ -212,11 +228,20 @@ def rewrite_match_queries(node: Any) -> Any:
 
             # add keyword wildcards as fallbacks
             for f in analysed_fields:
-                kf = _normalise_field_to_keyword(f)  # url -> url.keyword, *.std -> *.keyword, etc.
+                kf = _normalise_field_to_keyword(
+                    f
+                )  # url -> url.keyword, *.std -> *.keyword, etc.
                 if isinstance(kf, str) and kf.endswith(".keyword"):
-                    should.append({
-                        "wildcard": { kf: { "value": _add_wildcard_if_missing(q), "case_insensitive": True } }
-                    })
+                    should.append(
+                        {
+                            "wildcard": {
+                                kf: {
+                                    "value": _add_wildcard_if_missing(q),
+                                    "case_insensitive": True,
+                                }
+                            }
+                        }
+                    )
 
             return {"bool": {"should": should, "minimum_should_match": 1}}
 
@@ -234,6 +259,7 @@ def gate_short_text(min_len: int = 2):
     Applies only to texty queries (multi_match, query_string, simple_query_string,
     match, match_phrase). Exact filters (term/terms) are left untouched.
     """
+
     def _gate(node: Any) -> Any:
         if not isinstance(node, dict):
             return node
@@ -257,17 +283,21 @@ def gate_short_text(min_len: int = 2):
             v = qnode.get(key)
             if isinstance(v, dict):
                 for spec in v.values():
-                    if (isinstance(spec, dict) and _too_short(spec.get("query"))) or \
-                       (isinstance(spec, str) and _too_short(spec)):
+                    if (isinstance(spec, dict) and _too_short(spec.get("query"))) or (
+                        isinstance(spec, str) and _too_short(spec)
+                    ):
                         node["query"] = {"match_none": {}}
                         return node
 
         return node
+
     return _gate
 
+
 # ---------------- Prune empty fields helper ----------------------
-# Remove keys with blank values (None, "", [], etc) from a dict to 
+# Remove keys with blank values (None, "", [], etc) from a dict to
 # prevent empty box appearing on the FE
+
 
 def _is_blank(x: Any) -> bool:
     if x is None:
@@ -279,6 +309,7 @@ def _is_blank(x: Any) -> bool:
     if isinstance(x, dict):
         return len(x) == 0
     return False
+
 
 def prune_empty_fields(doc: Dict[str, Any], keys: Iterable[str]) -> Dict[str, Any]:
     if not isinstance(doc, dict):

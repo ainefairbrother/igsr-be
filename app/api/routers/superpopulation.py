@@ -13,8 +13,11 @@ INDEX = settings.INDEX_SUPERPOPULATION
 
 # ------------------------------ Endpoints ------------------------------------
 
+
 @router.post("/_search")
-def search_superpopulation(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
+def search_superpopulation(
+    body: Optional[Dict[str, Any]] = Body(None),
+) -> Dict[str, Any]:
     return run_search(
         INDEX,
         body,

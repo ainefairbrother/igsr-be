@@ -23,13 +23,23 @@ INDEX = settings.INDEX_FILE
 
 # -------------------------- Helpers ---------------------------------
 
+
 def _ensure_file_query(body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     body = body or {}
     if "_source" not in body:
-        body["_source"] = ["url", "md5", "dataType", "analysisGroup", "dataCollections", "samples"]
+        body["_source"] = [
+            "url",
+            "md5",
+            "dataType",
+            "analysisGroup",
+            "dataCollections",
+            "samples",
+        ]
     return body
 
+
 # ------------------------------ Endpoints ------------------------------------
+
 
 @router.post("/_search")
 def beta_search_files(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
@@ -37,8 +47,10 @@ def beta_search_files(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
         INDEX,
         body,
         size_cap=settings.ES_ALL_SIZE_CAP,
-        rewrite=compose_rewrites(gate_short_text(2), rewrite_terms_for_file, rewrite_match_queries),
-        ensure=_ensure_file_query
+        rewrite=compose_rewrites(
+            gate_short_text(2), rewrite_terms_for_file, rewrite_match_queries
+        ),
+        ensure=_ensure_file_query,
     )
 
 
@@ -61,7 +73,7 @@ async def export_files_tsv(
             "analysisGroup",
             "dataCollections",
             "samples",
-            "populations"
-            ],
+            "populations",
+        ],
         rewrite=compose_rewrites(rewrite_terms_for_file, rewrite_match_queries),
     )

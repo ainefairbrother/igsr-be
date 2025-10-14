@@ -14,6 +14,7 @@ INDEX = settings.INDEX_ANALYSIS_GROUP
 
 # ------------------------------- Helpers ------------------------------------ #
 
+
 def _choose_human_label(src: Dict[str, Any]) -> str:
     """
     Pick a human label to show in the FE. These labels are used in the filter
@@ -32,7 +33,7 @@ def _apply_fe_label(resp: Dict[str, Any], _es_body: Dict[str, Any]) -> Dict[str,
     """
     Inject human-friendly labels for the FE into each hit.
     """
-    hits = ((resp.get("hits") or {}).get("hits") or [])
+    hits = (resp.get("hits") or {}).get("hits") or []
     for h in hits:
         src = h.get("_source") or {}
         human = _choose_human_label(src)
@@ -41,11 +42,15 @@ def _apply_fe_label(resp: Dict[str, Any], _es_body: Dict[str, Any]) -> Dict[str,
             src["title"] = human
         h["_source"] = src
     return resp
-        
+
+
 # -------------------------------- Endpoints ------------------------------------ #
 
+
 @router.post("/_search")
-def search_analysis_group(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
+def search_analysis_group(
+    body: Optional[Dict[str, Any]] = Body(None),
+) -> Dict[str, Any]:
     return run_search(
         INDEX,
         body,
