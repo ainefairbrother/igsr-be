@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN useradd -m appuser
+RUN chown -R appuser:appuser /app
+USER appuser
 WORKDIR /app
 
 # Install Python deps first
@@ -23,6 +24,9 @@ RUN pip install --upgrade pip \
 COPY . .
 
 # Runtime env
-ENV PORT=8000
+ENV PORT=8080
+
+# For dev, Google Cloud Run will ignore
 EXPOSE 8000
+
 CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-c", "gunicorn_conf.py", "app.main:app"]
