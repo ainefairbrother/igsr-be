@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     CORS_ALLOW_ORIGINS: List[str] = [""]
 
     ES_HOST: str = ""
+    ES_CLOUD_ID: Optional[str] = None
     ES_USERNAME: str | None = None
     ES_PASSWORD: str | None = None
     ES_API_KEY: str | None = None
