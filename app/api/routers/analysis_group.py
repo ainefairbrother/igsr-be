@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body
 
 from app.core.config import settings
 from app.lib.search_utils import run_search
+from app.api.schemas import SearchResponse
 
 router = APIRouter(prefix="/beta/analysis-group", tags=["analysis-group"])
 INDEX = settings.INDEX_ANALYSIS_GROUP
@@ -47,9 +48,22 @@ def _apply_fe_label(resp: Dict[str, Any], _es_body: Dict[str, Any]) -> Dict[str,
 # -------------------------------- Endpoints ------------------------------------ #
 
 
-@router.post("/_search")
+@router.post(
+    "/_search",
+    summary="Search analysis groups",
+    response_model=SearchResponse,
+    response_description="Normalised Elasticsearch response with FE-friendly labels",
+)
 def search_analysis_group(
-    body: Optional[Dict[str, Any]] = Body(None),
+    body: Optional[Dict[str, Any]] = Body(
+        None,
+        example={
+            "query": {"match_all": {}},
+            "size": 25,
+            "sort": [{"title.keyword": "asc"}],
+        },
+        description="Elasticsearch search payload; size:-1 is capped server-side.",
+    ),
 ) -> Dict[str, Any]:
     return run_search(
         INDEX,

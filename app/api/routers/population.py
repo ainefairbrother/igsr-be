@@ -17,6 +17,7 @@ from app.lib.es_utils import (
     compose_rewrites,
     prune_empty_fields,
 )
+from app.api.schemas import SearchResponse, SourceDocument
 
 router = APIRouter(prefix="/beta/population", tags=["population"])
 INDEX = settings.INDEX_POPULATION
@@ -24,8 +25,23 @@ INDEX = settings.INDEX_POPULATION
 # ------------------------------ Endpoints ------------------------------------ #
 
 
-@router.post("/_search")
-def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
+@router.post(
+    "/_search",
+    summary="Search populations",
+    response_model=SearchResponse,
+    response_description="Normalised Elasticsearch response for population search",
+)
+def search_population(
+    body: Optional[Dict[str, Any]] = Body(
+        None,
+        example={
+            "query": {"match_all": {}},
+            "size": 25,
+            "sort": [{"name.keyword": "asc"}],
+        },
+        description="Elasticsearch search payload; size:-1 is capped server-side.",
+    )
+) -> Dict[str, Any]:
     """
     POST /beta/population/_search"""
     return run_search(
@@ -38,9 +54,18 @@ def search_population(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
     )
 
 
-@router.get("/{pid}")
+@router.get(
+    "/{pid}",
+    summary="Get population by id",
+    response_model=SourceDocument,
+    response_description="Single population document wrapped in _source",
+)
 def get_population(
-    pid: str = Path(..., description="Population identifier (ES _id or elasticId)"),
+    pid: str = Path(
+        ...,
+        description="Population identifier (ES _id or elasticId)",
+        example="GBR",
+    ),
 ) -> Dict[str, Any]:
     """
     GET /beta/population/{pid}
@@ -81,15 +106,32 @@ def get_population(
     raise HTTPException(status_code=404, detail="Population not found")
 
 
-@router.post("/_search/{filename}.tsv")
+@router.post(
+    "/_search/{filename}.tsv",
+    summary="Export populations search to TSV",
+    response_description="TSV file containing the selected fields",
+    responses={
+        200: {
+            "content": {"text/tab-separated-values": {}},
+            "description": "TSV download of population search results",
+        }
+    },
+)
 async def export_populations_tsv(
     filename: str,
     request: Request,
-    json_form: Optional[str] = Form(None, alias="json"),
+    json: Optional[str] = Form(
+        None,
+        description=(
+            "Optional JSON search body (stringified). "
+            'Example: {"query": {"match_all": {}}, "size": 100}'
+        ),
+        example='{"query": {"match_all": {}}, "size": 100}',
+    ),
 ) -> Response:
     return await export_tsv_response(
         request=request,
-        json_form=json_form,
+        json_form=json,
         index=INDEX,
         filename=filename,
         size_cap=settings.ES_EXPORT_SIZE_CAP,

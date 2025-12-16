@@ -127,13 +127,14 @@ async def export_tsv_response(
             form = await request.form()
             raw = form.get("json")
             if not raw:
-                raise HTTPException(
-                    status_code=422, detail="Missing JSON body or form field 'json'"
-                )
-            try:
-                payload = json.loads(raw)
-            except Exception as e:
-                raise HTTPException(status_code=422, detail=f"Invalid form 'json': {e}")
+                payload = {}
+            else:
+                try:
+                    payload = json.loads(raw)
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=422, detail=f"Invalid form 'json': {e}"
+                    )
 
     # Extract request parts
     fields: List[str] = list(payload.get("fields") or [])
