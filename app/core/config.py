@@ -1,10 +1,10 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional
 
-
 class Settings(BaseSettings):
     PORT: int = 8000
     CORS_ALLOW_ORIGINS: List[str] = [""]
+    API_BASE_PATH: str = "/api"
 
     ES_HOST: str = ""
     ES_CLOUD_ID: Optional[str] = None

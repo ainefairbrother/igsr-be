@@ -38,6 +38,10 @@ tags_metadata = [
     {"name": "sitemap", "description": "Sitemap search endpoint."},
 ]
 
+# Public base path the API is exposed under (e.g. /api behind the load balancer).
+# This keeps the OpenAPI "Try it out" requests pointed at the right prefix.
+public_api_base = settings.API_BASE_PATH.rstrip("/") or "/"
+
 app = FastAPI(
     title="IGSR API",
     version="2025",
@@ -45,7 +49,8 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     openapi_tags=tags_metadata,
-    swagger_ui_parameters={"defaultModelsExpandDepth": -1}
+    swagger_ui_parameters={"defaultModelsExpandDepth": -1},
+    servers=[{"url": public_api_base}],
 )
 log = logging.getLogger("uvicorn.error")
 
