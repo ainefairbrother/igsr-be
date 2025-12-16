@@ -17,6 +17,7 @@ from app.lib.es_utils import (
     compose_rewrites,
     prune_empty_fields,
 )
+from app.api.schemas import SearchResponse, SourceDocument
 
 router = APIRouter(prefix="/beta/sample", tags=["samples"])
 INDEX = settings.INDEX_SAMPLE
@@ -24,8 +25,23 @@ INDEX = settings.INDEX_SAMPLE
 # ------------------------------ Endpoints ------------------------------------
 
 
-@router.post("/_search")
-def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
+@router.post(
+    "/_search",
+    summary="Search samples",
+    response_model=SearchResponse,
+    response_description="Normalised Elasticsearch response for sample search",
+)
+def search_samples(
+    body: Optional[Dict[str, Any]] = Body(
+        None,
+        example={
+            "query": {"match_all": {}},
+            "size": 25,
+            "sort": [{"name.keyword": "asc"}],
+        },
+        description="Elasticsearch search payload; size:-1 is capped server-side.",
+    )
+) -> Dict[str, Any]:
     """
     POST /beta/sample/_search
     """
@@ -39,9 +55,18 @@ def search_samples(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any
     )
 
 
-@router.get("/{name}")
+@router.get(
+    "/{name}",
+    summary="Get sample by name or id",
+    response_model=SourceDocument,
+    response_description="Single sample document wrapped in _source",
+)
 def get_sample(
-    name: str = Path(..., description="Sample identifier (often the ES _id)"),
+    name: str = Path(
+        ...,
+        description="Sample identifier (often the ES _id)",
+        example="HG00096",
+    ),
 ) -> Dict[str, Any]:
     """
     GET /beta/sample/{name}
@@ -84,15 +109,32 @@ def get_sample(
     raise HTTPException(status_code=404, detail="Sample not found")
 
 
-@router.post("/_search/{filename}.tsv")
+@router.post(
+    "/_search/{filename}.tsv",
+    summary="Export samples search to TSV",
+    response_description="TSV file containing the selected fields",
+    responses={
+        200: {
+            "content": {"text/tab-separated-values": {}},
+            "description": "TSV download of sample search results",
+        }
+    },
+)
 async def export_samples_tsv(
     filename: str,
     request: Request,
-    json_form: Optional[str] = Form(None, alias="json"),
+    json: Optional[str] = Form(
+        None,
+        description=(
+            "Optional JSON search body (stringified). "
+            'Example: {"query": {"match_all": {}}, "size": 100}'
+        ),
+        example='{"query": {"match_all": {}}, "size": 100}',
+    ),
 ) -> Response:
     return await export_tsv_response(
         request=request,
-        json_form=json_form,
+        json_form=json,
         index=INDEX,
         filename=filename,
         size_cap=settings.ES_EXPORT_SIZE_CAP,
