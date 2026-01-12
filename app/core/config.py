@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # Asking for more than that in one request, ES will throw a 400
     # So, keep ≤ ES index max_result_window - here, I've set it to 100 as this is the max. that are displayed on the FE
     # at once anyway (as returned from /_search).
-    ES_ALL_SIZE_CAP: int = 100  # used by normal /_search endpoints
+    ES_ALL_SIZE_CAP: int = 500  # used by normal /_search endpoints
     ES_EXPORT_SIZE_CAP: int = (
         10_000  # higher cap for file downloads (≤ index max_result_window)
     )
