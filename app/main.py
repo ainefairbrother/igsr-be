@@ -15,7 +15,43 @@ from app.api.routers import superpopulation
 from app.api.routers import file
 from app.api.routers import sitemap
 
-app = FastAPI(title="IGSR API")
+tags_metadata = [
+    {"name": "health", "description": "Health check endpoint."},
+    {
+        "name": "samples",
+        "description": "Sample search, ID lookup, and TSV export endpoint.",
+    },
+    {
+        "name": "data-collection",
+        "description": "Data collection search endpoint.",
+    },
+    {
+        "name": "analysis-group",
+        "description": "Analysis group search endpoint.",
+    },
+    {
+        "name": "population",
+        "description": "Population search, ID lookup, and TSV export endpoint.",
+    },
+    {"name": "superpopulation", "description": "Superpopulation search endpoint."},
+    {"name": "file", "description": "File search and TSV export endpoint."},
+    {"name": "sitemap", "description": "Sitemap search endpoint."},
+]
+
+# Public base path the API is exposed under (e.g. /api behind the load balancer).
+# This keeps the OpenAPI "Try it out" requests pointed at the right prefix.
+public_api_base = settings.API_BASE_PATH.rstrip("/") or "/"
+
+app = FastAPI(
+    title="IGSR API",
+    version="2025",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=tags_metadata,
+    swagger_ui_parameters={"defaultModelsExpandDepth": -1},
+    servers=[{"url": public_api_base}],
+)
 log = logging.getLogger("uvicorn.error")
 
 

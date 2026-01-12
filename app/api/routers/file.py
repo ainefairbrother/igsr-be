@@ -17,6 +17,7 @@ from app.lib.es_utils import (
     gate_short_text,
     compose_rewrites,
 )
+from app.api.schemas import SearchResponse
 
 router = APIRouter(prefix="/beta/file", tags=["file"])
 INDEX = settings.INDEX_FILE
@@ -41,8 +42,27 @@ def _ensure_file_query(body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 # ------------------------------ Endpoints ------------------------------------
 
 
-@router.post("/_search")
-def beta_search_files(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, Any]:
+@router.post(
+    "/_search",
+    summary="Search files",
+    response_model=SearchResponse,
+    response_description="Normalised Elasticsearch response for file search",
+)
+def beta_search_files(
+    body: Optional[Dict[str, Any]] = Body(
+        None,
+        example={
+            "query": {"match_all": {}},
+            "size": 25,
+            "sort": [{"dataType.keyword": "asc"}],
+            "_source": ["url", "md5", "dataType"],
+        },
+        description=(
+            "Elasticsearch search payload; size:-1 is capped server-side. "
+            "Defaults will add minimal _source fields if omitted."
+        ),
+    )
+) -> Dict[str, Any]:
     return run_search(
         INDEX,
         body,
@@ -54,15 +74,32 @@ def beta_search_files(body: Optional[Dict[str, Any]] = Body(None)) -> Dict[str, 
     )
 
 
-@router.post("/_search/{filename}.tsv")
+@router.post(
+    "/_search/{filename}.tsv",
+    summary="Export file search to TSV",
+    response_description="TSV file containing the selected fields",
+    responses={
+        200: {
+            "content": {"text/tab-separated-values": {}},
+            "description": "TSV download of file search results",
+        }
+    },
+)
 async def export_files_tsv(
     filename: str,
     request: Request,
-    json_form: Optional[str] = Form(None, alias="json"),
+    json: Optional[str] = Form(
+        None,
+        description=(
+            "Optional JSON search body (stringified). "
+            'Example: {"query": {"match_all": {}}, "size": 100}'
+        ),
+        example='{"query": {"match_all": {}}, "size": 100}',
+    ),
 ) -> Response:
     return await export_tsv_response(
         request=request,
-        json_form=json_form,
+        json_form=json,
         index=INDEX,
         filename=filename,
         size_cap=settings.ES_EXPORT_SIZE_CAP,
