@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # at once anyway (as returned from /_search).
     ES_ALL_SIZE_CAP: int = 500  # used by normal /_search endpoints
     ES_EXPORT_SIZE_CAP: int = (
-        10_000  # higher cap for file downloads (≤ index max_result_window)
+        1_000_000  # higher cap for file downloads (≤ index max_result_window)
     )
 
     # Allow .env file to override defaults
