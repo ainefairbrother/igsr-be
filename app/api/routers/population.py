@@ -17,9 +17,14 @@ from app.lib.es_utils import (
     compose_rewrites,
     prune_empty_fields,
 )
-from app.api.schemas import SearchResponse, SourceDocument
+from app.api.schemas import (
+    SearchResponse,
+    SourceDocument,
+    ErrorDetailResponse,
+    SearchRequest,
+)
 
-router = APIRouter(prefix="/beta/population", tags=["population"])
+router = APIRouter(prefix="/beta/population", tags=["Population"])
 INDEX = settings.INDEX_POPULATION
 
 # ------------------------------ Endpoints ------------------------------------ #
@@ -27,26 +32,44 @@ INDEX = settings.INDEX_POPULATION
 
 @router.post(
     "/_search",
-    summary="Search populations",
+    summary="Find populations",
+    description=(
+        "Search populations using filters or text terms. "
+        "Returns matching population records and the total number of matches."
+    ),
     response_model=SearchResponse,
-    response_description="Normalised Elasticsearch response for population search",
+    response_description="A list of matching populations, plus the total number of matches.",
+    responses={
+        502: {
+            "model": ErrorDetailResponse,
+            "description": (
+                "Search is temporarily unavailable because the backend cannot reach "
+                "the search service."
+            ),
+            "content": {
+                "application/json": {"example": {"detail": "backend_unavailable"}}
+            },
+        }
+    },
 )
 def search_population(
-    body: Optional[Dict[str, Any]] = Body(
+    body: Optional[SearchRequest] = Body(
         None,
         example={
             "query": {"match_all": {}},
             "size": 25,
             "sort": [{"name.keyword": "asc"}],
         },
-        description="Elasticsearch search payload; size:-1 is capped server-side.",
+        description=(
+            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit."
+        ),
     )
 ) -> Dict[str, Any]:
     """
     POST /beta/population/_search"""
     return run_search(
         INDEX,
-        body,
+        body.model_dump(by_alias=True, exclude_none=True) if body else None,
         size_cap=settings.ES_ALL_SIZE_CAP,
         rewrite=compose_rewrites(
             gate_short_text(2), rewrite_terms_for_population, rewrite_match_queries
@@ -56,14 +79,39 @@ def search_population(
 
 @router.get(
     "/{pid}",
-    summary="Get population by id",
+    summary="Get one population",
+    description=(
+        "Look up a single population by population code or identifier. "
+        "Returns one population record in the response body."
+    ),
     response_model=SourceDocument,
-    response_description="Single population document wrapped in _source",
+    response_description="A single population record.",
+    responses={
+        404: {
+            "model": ErrorDetailResponse,
+            "description": "No population was found for the supplied code or ID.",
+            "content": {
+                "application/json": {"example": {"detail": "Population not found"}}
+            },
+        },
+        502: {
+            "model": ErrorDetailResponse,
+            "description": (
+                "The population could not be fetched because the backend could not "
+                "query the search service."
+            ),
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Elasticsearch error: connection failed"}
+                }
+            },
+        },
+    },
 )
 def get_population(
     pid: str = Path(
         ...,
-        description="Population identifier (ES _id or elasticId)",
+        description="Population code or identifier (for example GBR).",
         example="GBR",
     ),
 ) -> Dict[str, Any]:
@@ -108,6 +156,7 @@ def get_population(
 
 @router.post(
     "/_search/{filename}.tsv",
+    include_in_schema=False,
     summary="Export populations search to TSV",
     response_description="TSV file containing the selected fields",
     responses={

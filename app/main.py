@@ -16,41 +16,44 @@ from app.api.routers import file
 from app.api.routers import sitemap
 
 tags_metadata = [
-    {"name": "health", "description": "Health check endpoint."},
     {
-        "name": "samples",
-        "description": "Sample search, ID lookup, and TSV export endpoint.",
+        "name": "Analysis group",
+        "description": "List all analysis groups. Results include group names, descriptions, and related sample links.",
     },
     {
-        "name": "data-collection",
-        "description": "Data collection search endpoint.",
+        "name": "Data collection",
+        "description": "List all data collections. Results include collection names, descriptions, and related sample links.",
     },
     {
-        "name": "analysis-group",
-        "description": "Analysis group search endpoint.",
+        "name": "File",
+        "description": "List all files. Results include file details such as URL, checksum, file type, and related sample links.",
     },
     {
-        "name": "population",
-        "description": "Population search, ID lookup, and TSV export endpoint.",
+        "name": "Population",
+        "description": "List all populations or look up one population by code. Results include population names, locations, and superpopulation links.",
     },
-    {"name": "superpopulation", "description": "Superpopulation search endpoint."},
-    {"name": "file", "description": "File search and TSV export endpoint."},
-    {"name": "sitemap", "description": "Sitemap search endpoint."},
+    {
+        "name": "Sample",
+        "description": "List all samples or look up one sample by ID. Results include the sample record and related metadata.",
+    },
+    {
+        "name": "Superpopulation",
+        "description": "List all superpopulation groups or look up one superpopulation by code. Results include superpopulation names and descriptions.",
+    },
 ]
 
 # Public base path the API is exposed under (e.g. /api behind the load balancer).
-# This keeps the OpenAPI "Try it out" requests pointed at the right prefix.
 public_api_base = settings.API_BASE_PATH.rstrip("/") or "/"
 
 app = FastAPI(
     title="IGSR API",
     version="2025",
+    description="API for searching and retrieving IGSR sample, population, file, and collection data. Visit the main site at https://www.internationalgenome.org/ for more information about the project, or email info@1000genomes.org with questions or feedback.",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     openapi_tags=tags_metadata,
-    swagger_ui_parameters={"defaultModelsExpandDepth": -1},
-    servers=[{"url": public_api_base}],
+    swagger_ui_parameters={"defaultModelsExpandDepth": -1}
 )
 log = logging.getLogger("uvicorn.error")
 
@@ -73,17 +76,17 @@ app.add_middleware(
 )
 
 # Include all routers
-app.include_router(health.router)
+app.include_router(health.router, include_in_schema=False)
 app.include_router(samples.router)
 app.include_router(data_collections.router)
 app.include_router(analysis_group.router)
 app.include_router(population.router)
 app.include_router(superpopulation.router)
 app.include_router(file.router)
-app.include_router(sitemap.router)
+app.include_router(sitemap.router, include_in_schema=False)
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def root():
     return {"ok": True}
 
