@@ -17,9 +17,9 @@ from app.lib.es_utils import (
     gate_short_text,
     compose_rewrites,
 )
-from app.api.schemas import SearchResponse
+from app.api.schemas import SearchResponse, ErrorDetailResponse, SearchRequest
 
-router = APIRouter(prefix="/beta/file", tags=["file"])
+router = APIRouter(prefix="/beta/file", tags=["File"])
 INDEX = settings.INDEX_FILE
 
 # -------------------------- Helpers ---------------------------------
@@ -44,12 +44,28 @@ def _ensure_file_query(body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 @router.post(
     "/_search",
-    summary="Search files",
+    summary="Find files",
+    description=(
+        "Search IGSR file records by text or filters. "
+        "Returns matching files with key metadata such as URL, checksum, file type, and related sample links."
+    ),
     response_model=SearchResponse,
-    response_description="Normalised Elasticsearch response for file search",
+    response_description="A list of matching files, plus the total number of matches.",
+    responses={
+        502: {
+            "model": ErrorDetailResponse,
+            "description": (
+                "Search is temporarily unavailable because the backend cannot reach "
+                "the search service."
+            ),
+            "content": {
+                "application/json": {"example": {"detail": "backend_unavailable"}}
+            },
+        }
+    },
 )
 def beta_search_files(
-    body: Optional[Dict[str, Any]] = Body(
+    body: Optional[SearchRequest] = Body(
         None,
         example={
             "query": {"match_all": {}},
@@ -58,14 +74,14 @@ def beta_search_files(
             "_source": ["url", "md5", "dataType"],
         },
         description=(
-            "Elasticsearch search payload; size:-1 is capped server-side. "
-            "Defaults will add minimal _source fields if omitted."
+            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit. "
+            "If _source is not provided, the API returns a default set of key file fields."
         ),
     )
 ) -> Dict[str, Any]:
     return run_search(
         INDEX,
-        body,
+        body.model_dump(by_alias=True, exclude_none=True) if body else None,
         size_cap=settings.ES_ALL_SIZE_CAP,
         rewrite=compose_rewrites(
             gate_short_text(2), rewrite_terms_for_file, rewrite_match_queries
@@ -76,6 +92,7 @@ def beta_search_files(
 
 @router.post(
     "/_search/{filename}.tsv",
+    include_in_schema=False,
     summary="Export file search to TSV",
     response_description="TSV file containing the selected fields",
     responses={
