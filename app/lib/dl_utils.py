@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 from fastapi import HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 import json
 from app.services.es import es
 
@@ -91,6 +92,62 @@ def iter_hits_as_rows(
 RewriteFn = Callable[[Any], Any]
 
 
+def _compute_export_caps(
+    payload: Dict[str, Any], *, size_cap: int, es_batch_cap: int = 10_000
+) -> tuple[int, int]:
+    """
+    Returns (batch_size, total_cap).
+
+    - batch_size: per-request ES `size` (must respect index.max_result_window)
+    - total_cap: max number of rows we will export overall
+    """
+    requested_size = payload.get("size")
+    if not isinstance(requested_size, int) or requested_size <= 0:
+        requested_size = size_cap
+    total_cap = size_cap
+    batch_size = min(requested_size, es_batch_cap)
+    return batch_size, total_cap
+
+
+def _iter_tsv_bytes_from_scroll(
+    *,
+    first_resp: Dict[str, Any],
+    header: str,
+    fields: List[str],
+    scroll: str,
+    total_cap: int,
+) -> Iterable[bytes]:
+    scroll_id: Optional[str] = None
+    total_exported = 0
+    try:
+        if header:
+            yield (header + "\n").encode("utf-8")
+
+        resp = first_resp
+        scroll_id = resp.get("_scroll_id")
+        while True:
+            hits = (resp.get("hits") or {}).get("hits") or []
+            if not hits:
+                break
+            for row in iter_hits_as_rows(hits, fields):
+                if total_exported >= total_cap:
+                    break
+                yield (row + "\n").encode("utf-8")
+                total_exported += 1
+            if total_exported >= total_cap:
+                break
+            if not scroll_id:
+                break
+            resp = es.scroll(scroll_id=scroll_id, scroll=scroll)
+            scroll_id = resp.get("_scroll_id")
+    finally:
+        if scroll_id:
+            try:
+                es.clear_scroll(scroll_id=scroll_id)
+            except Exception:
+                pass
+
+
 async def export_tsv_response(
     *,
     request: Request,
@@ -145,15 +202,7 @@ async def export_tsv_response(
     if rewrite:
         query = rewrite(query)
 
-    # Cap per-batch size; we will stream multiple batches if needed.
-    # IMPORTANT: Elasticsearch's max_result_window (often 10_000) applies per request,
-    # so we must *always* cap the batch size to that limit, regardless of size_cap.
-    es_batch_cap = 10_000
-    size = payload.get("size")
-    if not isinstance(size, int) or size <= 0:
-        size = min(es_batch_cap, size_cap)
-    else:
-        size = min(size, es_batch_cap, size_cap)
+    batch_size, total_cap = _compute_export_caps(payload, size_cap=size_cap)
 
     # Columns and header
     if not fields:
@@ -164,50 +213,33 @@ async def export_tsv_response(
         else "\t".join(fields)
     )
 
-    # Use scroll API to page through all hits without hitting max_result_window
+    # Use scroll API to page through all hits and stream them back
     scroll = "2m"
-    lines: List[str] = [header] if header else []
 
     try:
-        resp = es.search(
+        first_resp = es.search(
             index=index,
             body={
                 "query": query,
                 "_source": True,
-                "size": size,
+                "size": batch_size,
                 "track_total_hits": True,
             },
             scroll=scroll,
             ignore_unavailable=True,
         )
-        scroll_id = resp.get("_scroll_id")
-        total_exported = 0
-        while True:
-            hits = (resp.get("hits") or {}).get("hits") or []
-            if not hits:
-                break
-            batch_count = len(hits)
-            total_exported += batch_count
-            lines.extend(iter_hits_as_rows(hits, fields))
-            if not scroll_id:
-                break
-            resp = es.scroll(scroll_id=scroll_id, scroll=scroll)
-            scroll_id = resp.get("_scroll_id")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Elasticsearch error: {e}")
-    finally:
-        if "scroll_id" in locals() and scroll_id:
-            try:
-                es.clear_scroll(scroll_id=scroll_id)
-            except Exception:
-                pass
 
-    tsv = ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
-
-    # Response
-    return Response(
-        content=tsv,
-        media_type="text/tab-separated-values",
+    return StreamingResponse(
+        _iter_tsv_bytes_from_scroll(
+            first_resp=first_resp,
+            header=header,
+            fields=fields,
+            scroll=scroll,
+            total_cap=total_cap,
+        ),
+        media_type="text/tab-separated-values; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}.tsv"',
             "Cache-Control": "no-store",
