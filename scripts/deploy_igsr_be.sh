@@ -248,6 +248,7 @@ run_deploy() {
     --image "$IMAGE"
     --allow-unauthenticated
     --region "$REGION"
+    --timeout 900
     --concurrency 80
     --memory 512Mi
     --min-instances "$MIN_INSTANCES"
@@ -261,6 +262,7 @@ run_deploy() {
       --image "$IMAGE"
       --allow-unauthenticated
       --region "$REGION"
+      --timeout 900
       --concurrency 80
       --memory 512Mi
       --min-instances "$MIN_INSTANCES"
