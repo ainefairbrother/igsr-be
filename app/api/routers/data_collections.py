@@ -23,13 +23,12 @@ INDEX = settings.INDEX_DATA_COLLECTIONS
 
 @router.post(
     "/_search",
-    summary="Find data collections",
+    summary="List all data collections.",
     description=(
-        "Search IGSR data collections by title, keywords, or filters. "
-        "Returns matching collection records and the total number of matches."
+        "Get all data collections used across IGSR data. Response includes: IDs, descriptions, related publications, data reuse policy document URLs, related samples, related populations and related data types."
     ),
     response_model=SearchResponse,
-    response_description="A list of matching data collections, plus the total number of matches.",
+    response_description="A list of data collections, plus the total number of matches.",
     responses={
         502: {
             "model": ErrorDetailResponse,

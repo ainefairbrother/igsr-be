@@ -32,10 +32,9 @@ INDEX = settings.INDEX_POPULATION
 
 @router.post(
     "/_search",
-    summary="Find populations",
+    summary="List all populations",
     description=(
-        "Search populations using filters or text terms. "
-        "Returns matching population records and the total number of matches."
+        "Get all populations across the IGSR data. Response includes: ID, descriptions, geo locations (latitude, longitude), related samples, related superpopulations and related data collections."
     ),
     response_model=SearchResponse,
     response_description="A list of matching populations, plus the total number of matches.",
@@ -79,10 +78,9 @@ def search_population(
 
 @router.get(
     "/{pid}",
-    summary="Get one population",
+    summary="Look up one population by ID.",
     description=(
-        "Look up a single population by population code or identifier. "
-        "Returns one population record in the response body."
+        "Look up a single population by population ID. Response includes: ID, description, geo location (latitude, longitude), related samples, related superpopulations and related data collections."
     ),
     response_model=SourceDocument,
     response_description="A single population record.",
