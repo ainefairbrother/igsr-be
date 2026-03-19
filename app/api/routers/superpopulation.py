@@ -17,10 +17,9 @@ INDEX = settings.INDEX_SUPERPOPULATION
 
 @router.post(
     "/_search",
-    summary="Find superpopulations",
+    summary="List all superpopulations.",
     description=(
-        "Browse or filter superpopulation groups. "
-        "Returns matching records and the total number of matches."
+        "Get all superpopulations across the IGSR data. Response includes IDs and descriptions."
     ),
     response_model=SearchResponse,
     response_description="A list of matching superpopulations, plus the total number of matches.",

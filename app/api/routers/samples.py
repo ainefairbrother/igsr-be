@@ -32,10 +32,9 @@ INDEX = settings.INDEX_SAMPLE
 
 @router.post(
     "/_search",
-    summary="Find samples",
+    summary="List all samples.",
     description=(
-        "Search the sample catalogue using filters or text terms. "
-        "Returns a list of matching samples together with the total number of matches."
+        "Get all samples across the IGSR data. Response includes: ID, synonyms, sex, related samples, related populations and related data collections."
     ),
     response_model=SearchResponse,
     response_description="A list of matching samples, plus the total number of matches.",
@@ -80,10 +79,9 @@ def search_samples(
 
 @router.get(
     "/{name}",
-    summary="Get one sample",
+    summary="Look up one sample by ID.",
     description=(
-        "Look up a single sample by sample name or identifier. "
-        "Returns one sample record in the response body."
+        "Look up a single sample by sample ID. Response includes: ID, synonyms, sex, related samples, related populations and related data collections."
     ),
     response_model=SourceDocument,
     response_description="A single sample record.",

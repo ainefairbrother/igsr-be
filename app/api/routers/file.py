@@ -44,13 +44,12 @@ def _ensure_file_query(body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 @router.post(
     "/_search",
-    summary="Find files",
+    summary="List all files.",
     description=(
-        "Search IGSR file records by text or filters. "
-        "Returns matching files with key metadata such as URL, checksum, file type, and related sample links."
+        "Get all files related to IGSR data. Response includes: IDs, URLs, checksums and data types."
     ),
     response_model=SearchResponse,
-    response_description="A list of matching files, plus the total number of matches.",
+    response_description="A list of files, plus the total number of matches.",
     responses={
         502: {
             "model": ErrorDetailResponse,

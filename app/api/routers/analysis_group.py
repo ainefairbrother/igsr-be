@@ -50,13 +50,12 @@ def _apply_fe_label(resp: Dict[str, Any], _es_body: Dict[str, Any]) -> Dict[str,
 
 @router.post(
     "/_search",
-    summary="Find analysis groups",
+    summary="List all analysis groups.",
     description=(
-        "Search analysis groups used across IGSR data. "
-        "Returns a list of groups that match your search."
+        "Get all analysis groups used across IGSR data. Response includes IDs and descriptions."
     ),
     response_model=SearchResponse,
-    response_description="A list of matching analysis groups, plus the total number of matches.",
+    response_description="A list of analysis groups, plus the total number of matches.",
     responses={
         502: {
             "model": ErrorDetailResponse,
