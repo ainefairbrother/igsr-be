@@ -168,7 +168,7 @@ async def export_tsv_response(
     """
     # Parse payload
     payload: Dict[str, Any] = {}
-    if json_form is not None:
+    if json_form and json_form.strip():
         try:
             payload = json.loads(json_form)
         except Exception as e:

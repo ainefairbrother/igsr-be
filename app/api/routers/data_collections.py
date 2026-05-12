@@ -23,18 +23,18 @@ INDEX = settings.INDEX_DATA_COLLECTIONS
 
 @router.post(
     "/_search",
-    summary="List all data collections.",
+    summary="List all data collections",
     description=(
-        "Get all data collections used across IGSR data. Response includes: IDs, descriptions, related publications, data reuse policy document URLs, related samples, related populations and related data types."
+        "Get all data collections used across IGSR data. Response includes: IDs, descriptions, related publications, data reuse policy document URLs, related samples, related populations and related data types"
     ),
     response_model=SearchResponse,
-    response_description="A list of data collections, plus the total number of matches.",
+    response_description="A list of data collections, plus the total number of matches",
     responses={
         502: {
             "model": ErrorDetailResponse,
             "description": (
                 "Search is temporarily unavailable because the backend cannot reach "
-                "the search service."
+                "the search service"
             ),
             "content": {
                 "application/json": {"example": {"detail": "backend_unavailable"}}
@@ -51,7 +51,7 @@ def search_data_collections(
             "sort": [{"title.keyword": "asc"}],
         },
         description=(
-            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit."
+            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit"
         ),
     ),
 ) -> Dict[str, Any]:

@@ -50,18 +50,18 @@ def _apply_fe_label(resp: Dict[str, Any], _es_body: Dict[str, Any]) -> Dict[str,
 
 @router.post(
     "/_search",
-    summary="List all analysis groups.",
+    summary="List all analysis groups",
     description=(
-        "Get all analysis groups used across IGSR data. Response includes IDs and descriptions."
+        "Get all analysis groups used across IGSR data. Response includes IDs and descriptions"
     ),
     response_model=SearchResponse,
-    response_description="A list of analysis groups, plus the total number of matches.",
+    response_description="A list of analysis groups, plus the total number of matches",
     responses={
         502: {
             "model": ErrorDetailResponse,
             "description": (
                 "Search is temporarily unavailable because the backend cannot reach "
-                "the search service."
+                "the search service"
             ),
             "content": {
                 "application/json": {"example": {"detail": "backend_unavailable"}}
@@ -78,7 +78,7 @@ def search_analysis_group(
             "sort": [{"displayOrder": "asc"}],
         },
         description=(
-            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit."
+            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit"
         ),
     ),
 ) -> Dict[str, Any]:

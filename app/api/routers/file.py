@@ -6,7 +6,7 @@ File router
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, Body, Response, Form, Request
+from fastapi import APIRouter, Body, Response, Form, Path, Request
 
 from app.core.config import settings
 from app.lib.search_utils import run_search
@@ -44,18 +44,18 @@ def _ensure_file_query(body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 @router.post(
     "/_search",
-    summary="List all files.",
+    summary="List all files",
     description=(
-        "Get all files related to IGSR data. Response includes: IDs, URLs, checksums and data types."
+        "Get all files related to IGSR data. Response includes: IDs, URLs, checksums and data types"
     ),
     response_model=SearchResponse,
-    response_description="A list of files, plus the total number of matches.",
+    response_description="A list of files, plus the total number of matches",
     responses={
         502: {
             "model": ErrorDetailResponse,
             "description": (
                 "Search is temporarily unavailable because the backend cannot reach "
-                "the search service."
+                "the search service"
             ),
             "content": {
                 "application/json": {"example": {"detail": "backend_unavailable"}}
@@ -74,7 +74,7 @@ def beta_search_files(
         },
         description=(
             "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit. "
-            "If _source is not provided, the API returns a default set of key file fields."
+            "If _source is not provided, the API returns a default set of key file fields"
         ),
     )
 ) -> Dict[str, Any]:
@@ -91,8 +91,7 @@ def beta_search_files(
 
 @router.post(
     "/_search/{filename}.tsv",
-    include_in_schema=False,
-    summary="Export file search to TSV",
+    summary="Export files to TSV",
     response_description="TSV file containing the selected fields",
     responses={
         200: {
@@ -102,14 +101,15 @@ def beta_search_files(
     },
 )
 async def export_files_tsv(
-    filename: str,
     request: Request,
+    filename: str = Path(
+        ...,
+        description="Download filename without the .tsv suffix, e.g. igsr_files",
+        example="igsr_files",
+    ),
     json: Optional[str] = Form(
-        None,
-        description=(
-            "Optional JSON search body (stringified). "
-            'Example: {"query": {"match_all": {}}, "size": 100}'
-        ),
+        '{"query": {"match_all": {}}, "size": 100}',
+        description="Search/export options as stringified JSON",
         example='{"query": {"match_all": {}}, "size": 100}',
     ),
 ) -> Response:

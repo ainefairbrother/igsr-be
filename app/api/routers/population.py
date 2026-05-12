@@ -34,16 +34,16 @@ INDEX = settings.INDEX_POPULATION
     "/_search",
     summary="List all populations",
     description=(
-        "Get all populations across the IGSR data. Response includes: ID, descriptions, geo locations (latitude, longitude), related samples, related superpopulations and related data collections."
+        "Get all populations across the IGSR data. Response includes: ID, descriptions, geo locations (latitude, longitude), related samples, related superpopulations and related data collections"
     ),
     response_model=SearchResponse,
-    response_description="A list of matching populations, plus the total number of matches.",
+    response_description="A list of matching populations, plus the total number of matches",
     responses={
         502: {
             "model": ErrorDetailResponse,
             "description": (
                 "Search is temporarily unavailable because the backend cannot reach "
-                "the search service."
+                "the search service"
             ),
             "content": {
                 "application/json": {"example": {"detail": "backend_unavailable"}}
@@ -60,7 +60,7 @@ def search_population(
             "sort": [{"name.keyword": "asc"}],
         },
         description=(
-            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit."
+            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit"
         ),
     )
 ) -> Dict[str, Any]:
@@ -78,16 +78,16 @@ def search_population(
 
 @router.get(
     "/{pid}",
-    summary="Look up one population by ID.",
+    summary="Look up one population by ID",
     description=(
-        "Look up a single population by population ID. Response includes: ID, description, geo location (latitude, longitude), related samples, related superpopulations and related data collections."
+        "Look up a single population by population ID. Response includes: ID, description, geo location (latitude, longitude), related samples, related superpopulations and related data collections"
     ),
     response_model=SourceDocument,
-    response_description="A single population record.",
+    response_description="A single population record",
     responses={
         404: {
             "model": ErrorDetailResponse,
-            "description": "No population was found for the supplied code or ID.",
+            "description": "No population was found for the supplied code or ID",
             "content": {
                 "application/json": {"example": {"detail": "Population not found"}}
             },
@@ -96,7 +96,7 @@ def search_population(
             "model": ErrorDetailResponse,
             "description": (
                 "The population could not be fetched because the backend could not "
-                "query the search service."
+                "query the search service"
             ),
             "content": {
                 "application/json": {
@@ -109,7 +109,7 @@ def search_population(
 def get_population(
     pid: str = Path(
         ...,
-        description="Population code or identifier (for example GBR).",
+        description="Population code or identifier (for example GBR)",
         example="GBR",
     ),
 ) -> Dict[str, Any]:
@@ -154,8 +154,7 @@ def get_population(
 
 @router.post(
     "/_search/{filename}.tsv",
-    include_in_schema=False,
-    summary="Export populations search to TSV",
+    summary="Export populations to TSV",
     response_description="TSV file containing the selected fields",
     responses={
         200: {
@@ -165,14 +164,15 @@ def get_population(
     },
 )
 async def export_populations_tsv(
-    filename: str,
     request: Request,
+    filename: str = Path(
+        ...,
+        description="Download filename without the .tsv suffix, e.g. igsr_populations",
+        example="igsr_populations",
+    ),
     json: Optional[str] = Form(
-        None,
-        description=(
-            "Optional JSON search body (stringified). "
-            'Example: {"query": {"match_all": {}}, "size": 100}'
-        ),
+        '{"query": {"match_all": {}}, "size": 100}',
+        description="Search/export options as stringified JSON",
         example='{"query": {"match_all": {}}, "size": 100}',
     ),
 ) -> Response:

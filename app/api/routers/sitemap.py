@@ -27,7 +27,7 @@ def search_sitemap(
     body: Optional[Dict[str, Any]] = Body(
         None,
         example={"query": {"match_all": {}}, "size": 100},
-        description="Elasticsearch search payload; size:-1 is capped server-side.",
+        description="Elasticsearch search payload; size:-1 is capped server-side",
     )
 ) -> Dict[str, Any]:
     """

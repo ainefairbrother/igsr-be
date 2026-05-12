@@ -18,27 +18,27 @@ from app.api.routers import sitemap
 tags_metadata = [
     {
         "name": "Analysis group",
-        "description": "List all analysis groups.",
+        "description": "List all analysis groups",
     },
     {
         "name": "Data collection",
-        "description": "List all data collections.",
+        "description": "List all data collections",
     },
     {
         "name": "File",
-        "description": "List all files.",
+        "description": "List all files or download file TSV",
     },
     {
         "name": "Population",
-        "description": "List all populations or look up one population by ID.",
+        "description": "List all populations, look up one by ID or download population TSV",
     },
     {
         "name": "Sample",
-        "description": "List all samples or look up one sample by ID.",
+        "description": "List all samples, look up one by ID or download sample TSV",
     },
     {
         "name": "Superpopulation",
-        "description": "List all superpopulations.",
+        "description": "List all superpopulations",
     },
 ]
 

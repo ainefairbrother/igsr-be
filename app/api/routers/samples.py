@@ -32,18 +32,18 @@ INDEX = settings.INDEX_SAMPLE
 
 @router.post(
     "/_search",
-    summary="List all samples.",
+    summary="List all samples",
     description=(
-        "Get all samples across the IGSR data. Response includes: ID, synonyms, sex, related samples, related populations and related data collections."
+        "Get all samples across the IGSR data. Response includes: ID, synonyms, sex, related samples, related populations and related data collections"
     ),
     response_model=SearchResponse,
-    response_description="A list of matching samples, plus the total number of matches.",
+    response_description="A list of matching samples, plus the total number of matches",
     responses={
         502: {
             "model": ErrorDetailResponse,
             "description": (
                 "Search is temporarily unavailable because the backend cannot reach "
-                "the search service."
+                "the search service"
             ),
             "content": {
                 "application/json": {"example": {"detail": "backend_unavailable"}}
@@ -60,7 +60,7 @@ def search_samples(
             "sort": [{"name.keyword": "asc"}],
         },
         description=(
-            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit."
+            "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit"
         ),
     )
 ) -> Dict[str, Any]:
@@ -79,16 +79,16 @@ def search_samples(
 
 @router.get(
     "/{name}",
-    summary="Look up one sample by ID.",
+    summary="Look up one sample by ID",
     description=(
-        "Look up a single sample by sample ID. Response includes: ID, synonyms, sex, related samples, related populations and related data collections."
+        "Look up a single sample by sample ID. Response includes: ID, synonyms, sex, related samples, related populations and related data collections"
     ),
     response_model=SourceDocument,
-    response_description="A single sample record.",
+    response_description="A single sample record",
     responses={
         404: {
             "model": ErrorDetailResponse,
-            "description": "No sample was found for the supplied sample name or ID.",
+            "description": "No sample was found for the supplied sample name or ID",
             "content": {
                 "application/json": {"example": {"detail": "Sample not found"}}
             },
@@ -97,7 +97,7 @@ def search_samples(
             "model": ErrorDetailResponse,
             "description": (
                 "The sample could not be fetched because the backend could not "
-                "query the search service."
+                "query the search service"
             ),
             "content": {
                 "application/json": {
@@ -110,7 +110,7 @@ def search_samples(
 def get_sample(
     name: str = Path(
         ...,
-        description="Sample name or identifier (for example HG00096).",
+        description="Sample name or identifier (for example HG00096)",
         example="HG00096",
     ),
 ) -> Dict[str, Any]:
@@ -157,7 +157,7 @@ def get_sample(
 
 @router.post(
     "/_search/{filename}.tsv",
-    include_in_schema=False,
+    summary="Export samples to TSV",
     responses={
         200: {
             "content": {"text/tab-separated-values": {}},
@@ -166,14 +166,15 @@ def get_sample(
     },
 )
 async def export_samples_tsv(
-    filename: str,
     request: Request,
+    filename: str = Path(
+        ...,
+        description="Download filename without the .tsv suffix, e.g. igsr_samples",
+        example="igsr_samples",
+    ),
     json: Optional[str] = Form(
-        None,
-        description=(
-            "Optional JSON search body (stringified). "
-            'Example: {"query": {"match_all": {}}, "size": 100}'
-        ),
+        '{"query": {"match_all": {}}, "size": 100}',
+        description="Search/export options as stringified JSON",
         example='{"query": {"match_all": {}}, "size": 100}',
     ),
 ) -> Response:
