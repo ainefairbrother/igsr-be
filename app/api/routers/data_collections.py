@@ -13,7 +13,7 @@ from app.lib.es_utils import (
     rewrite_terms_for_data_collection,
     compose_rewrites,
 )
-from app.api.schemas import SearchResponse, ErrorDetailResponse, SearchRequest
+from app.api.schemas import SearchResponse, ErrorDetailResponse
 
 router = APIRouter(prefix="/beta/data-collection", tags=["Data collection"])
 INDEX = settings.INDEX_DATA_COLLECTIONS
@@ -43,7 +43,7 @@ INDEX = settings.INDEX_DATA_COLLECTIONS
     },
 )
 def search_data_collections(
-    body: Optional[SearchRequest] = Body(
+    body: Optional[Dict[str, Any]] = Body(
         None,
         example={
             "query": {"match_all": {}},
@@ -57,7 +57,7 @@ def search_data_collections(
 ) -> Dict[str, Any]:
     return run_search(
         INDEX,
-        body.model_dump(by_alias=True, exclude_none=True) if body else None,
+        body,
         size_cap=settings.ES_ALL_SIZE_CAP,
         rewrite=compose_rewrites(
             gate_short_text(2), rewrite_match_queries, rewrite_terms_for_data_collection

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Body
 from typing import Any, Dict, Optional
 from app.core.config import settings
 from app.lib.search_utils import run_search
-from app.api.schemas import SearchResponse, ErrorDetailResponse, SearchRequest
+from app.api.schemas import SearchResponse, ErrorDetailResponse
 
 router = APIRouter(prefix="/beta/superpopulation", tags=["Superpopulation"])
 INDEX = settings.INDEX_SUPERPOPULATION
@@ -37,7 +37,7 @@ INDEX = settings.INDEX_SUPERPOPULATION
     },
 )
 def search_superpopulation(
-    body: Optional[SearchRequest] = Body(
+    body: Optional[Dict[str, Any]] = Body(
         None,
         example={"query": {"match_all": {}}, "size": 25},
         description=(
@@ -47,6 +47,6 @@ def search_superpopulation(
 ) -> Dict[str, Any]:
     return run_search(
         INDEX,
-        body.model_dump(by_alias=True, exclude_none=True) if body else None,
+        body,
         size_cap=settings.ES_ALL_SIZE_CAP,
     )

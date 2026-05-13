@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body
 
 from app.core.config import settings
 from app.lib.search_utils import run_search
-from app.api.schemas import SearchResponse, ErrorDetailResponse, SearchRequest
+from app.api.schemas import SearchResponse, ErrorDetailResponse
 
 router = APIRouter(prefix="/beta/analysis-group", tags=["Analysis group"])
 INDEX = settings.INDEX_ANALYSIS_GROUP
@@ -70,12 +70,12 @@ def _apply_fe_label(resp: Dict[str, Any], _es_body: Dict[str, Any]) -> Dict[str,
     },
 )
 def search_analysis_group(
-    body: Optional[SearchRequest] = Body(
+    body: Optional[Dict[str, Any]] = Body(
         None,
         example={
             "query": {"match_all": {}},
             "size": 25,
-            "sort": [{"displayOrder": "asc"}],
+            "sort": [{"title.keyword": "asc"}],
         },
         description=(
             "Search filters and options. If size is -1, the API returns as many results as allowed by the server limit"
@@ -84,7 +84,7 @@ def search_analysis_group(
 ) -> Dict[str, Any]:
     return run_search(
         INDEX,
-        body.model_dump(by_alias=True, exclude_none=True) if body else None,
+        body,
         size_cap=settings.ES_ALL_SIZE_CAP,
         postprocess=_apply_fe_label,
     )

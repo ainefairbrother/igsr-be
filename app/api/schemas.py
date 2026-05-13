@@ -12,50 +12,6 @@ class HealthResponse(BaseModel):
     )
 
 
-class SearchRequest(BaseModel):
-    """
-    Common request body for search endpoints.
-    """
-
-    model_config = ConfigDict(
-        extra="allow",
-        populate_by_name=True,
-        json_schema_extra={
-            "example": {
-                "query": {"match_all": {}},
-                "size": 25,
-                "sort": [{"name.keyword": "asc"}],
-            }
-        },
-    )
-
-    query: Dict[str, Any] = Field(
-        default_factory=lambda: {"match_all": {}},
-        description="Search query. If omitted, all records are matched.",
-    )
-    size: Optional[int] = Field(
-        default=None,
-        description=(
-            "Number of records to return. Use -1 to request all records up to the API limit."
-        ),
-    )
-    sort: Optional[List[Dict[str, Any]]] = Field(
-        default=None,
-        description="Sort order for returned records.",
-    )
-    source: Optional[Any] = Field(
-        default=None,
-        alias="_source",
-        description=(
-            "Optional field selection for returned records (for example ['name', 'sex'])."
-        ),
-    )
-    track_total_hits: Optional[bool] = Field(
-        default=None,
-        description="Set to true to return the exact total count.",
-    )
-
-
 class ErrorDetailResponse(BaseModel):
     detail: str = Field(
         ...,

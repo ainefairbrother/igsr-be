@@ -20,9 +20,7 @@ from app.lib.es_utils import (
 from app.api.schemas import (
     SearchResponse,
     SourceDocument,
-    ErrorDetailResponse,
-    SearchRequest,
-)
+    ErrorDetailResponse,)
 
 router = APIRouter(prefix="/beta/sample", tags=["Sample"])
 INDEX = settings.INDEX_SAMPLE
@@ -52,7 +50,7 @@ INDEX = settings.INDEX_SAMPLE
     },
 )
 def search_samples(
-    body: Optional[SearchRequest] = Body(
+    body: Optional[Dict[str, Any]] = Body(
         None,
         example={
             "query": {"match_all": {}},
@@ -69,7 +67,7 @@ def search_samples(
     """
     return run_search(
         INDEX,
-        body.model_dump(by_alias=True, exclude_none=True) if body else None,
+        body,
         size_cap=settings.ES_ALL_SIZE_CAP,
         rewrite=compose_rewrites(
             gate_short_text(2), rewrite_terms_for_samples, rewrite_match_queries

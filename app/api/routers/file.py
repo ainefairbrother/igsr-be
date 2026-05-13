@@ -17,7 +17,7 @@ from app.lib.es_utils import (
     gate_short_text,
     compose_rewrites,
 )
-from app.api.schemas import SearchResponse, ErrorDetailResponse, SearchRequest
+from app.api.schemas import SearchResponse, ErrorDetailResponse
 
 router = APIRouter(prefix="/beta/file", tags=["File"])
 INDEX = settings.INDEX_FILE
@@ -64,7 +64,7 @@ def _ensure_file_query(body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     },
 )
 def beta_search_files(
-    body: Optional[SearchRequest] = Body(
+    body: Optional[Dict[str, Any]] = Body(
         None,
         example={
             "query": {"match_all": {}},
@@ -80,7 +80,7 @@ def beta_search_files(
 ) -> Dict[str, Any]:
     return run_search(
         INDEX,
-        body.model_dump(by_alias=True, exclude_none=True) if body else None,
+        body,
         size_cap=settings.ES_ALL_SIZE_CAP,
         rewrite=compose_rewrites(
             gate_short_text(2), rewrite_terms_for_file, rewrite_match_queries
