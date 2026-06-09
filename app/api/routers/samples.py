@@ -171,9 +171,9 @@ async def export_samples_tsv(
         example="igsr_samples",
     ),
     json: Optional[str] = Form(
-        '{"query": {"match_all": {}}, "size": 100}',
+        '{"query": {"match_all": {}}, "size": 10, "fields": ["name", "sex"]}',
         description="Search/export options as stringified JSON",
-        example='{"query": {"match_all": {}}, "size": 100}',
+        example='{"query": {"match_all": {}}, "size": 10, "fields": ["name", "sex"]}',
     ),
 ) -> Response:
     return await export_tsv_response(

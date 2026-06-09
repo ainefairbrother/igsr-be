@@ -169,9 +169,9 @@ async def export_populations_tsv(
         example="igsr_populations",
     ),
     json: Optional[str] = Form(
-        '{"query": {"match_all": {}}, "size": 100}',
+        '{"query": {"match_all": {}}, "size": 10, "fields": ["name", "superpopulation.name"]}',
         description="Search/export options as stringified JSON",
-        example='{"query": {"match_all": {}}, "size": 100}',
+        example='{"query": {"match_all": {}}, "size": 10, "fields": ["name", "superpopulation.name"]}',
     ),
 ) -> Response:
     return await export_tsv_response(

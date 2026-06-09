@@ -49,6 +49,7 @@ app = FastAPI(
     title="IGSR API",
     version="2025",
     description="API for searching and retrieving IGSR sample, population, file, and collection data. Visit the main site at https://www.internationalgenome.org/ for more information about the project, or email info@1000genomes.org with questions or feedback.",
+    root_path=public_api_base,
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",

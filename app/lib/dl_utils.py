@@ -104,7 +104,7 @@ def _compute_export_caps(
     requested_size = payload.get("size")
     if not isinstance(requested_size, int) or requested_size <= 0:
         requested_size = size_cap
-    total_cap = size_cap
+    total_cap = min(requested_size, size_cap)
     batch_size = min(requested_size, es_batch_cap)
     return batch_size, total_cap
 
